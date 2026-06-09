@@ -1,0 +1,13 @@
+bot/.env
+bot/.env.local
+bot/.env.production
+bot/.env.*
+!bot/.env.example
+bot/node_modules/
+bot/dist/
+bot/coverage/
+.env
+.env.local
+.env.production
+.env.*
+!.env.example
