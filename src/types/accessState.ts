@@ -4,10 +4,10 @@ export type KnownAccessStatus = SubscriptionStatus;
 
 export interface AccessStateBase {
   telegramId: string;
-  loginEmail?: string;
+  loginEmail?: string | undefined;
   trialUsed: boolean;
-  expiresAt?: string;
-  deleteAfter?: string;
+  expiresAt?: string | undefined;
+  deleteAfter?: string | undefined;
 }
 
 export type UserAccessState =

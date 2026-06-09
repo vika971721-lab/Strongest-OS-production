@@ -2,15 +2,15 @@ import type { Context } from 'telegraf';
 
 export interface TelegramUserContext {
   telegramId: string;
-  chatId?: string;
-  username?: string;
-  firstName?: string;
-  lastName?: string;
-  languageCode?: string;
+  chatId?: string | undefined;
+  username?: string | undefined;
+  firstName?: string | undefined;
+  lastName?: string | undefined;
+  languageCode?: string | undefined;
 }
 
 export interface BotState {
-  user?: TelegramUserContext;
+  user?: TelegramUserContext | undefined;
 }
 
 export interface BotContext extends Context {

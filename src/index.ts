@@ -10,7 +10,7 @@ getSupabaseAdminClient(env);
 
 let isShuttingDown = false;
 
-const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
+const shutdown = (signal: NodeJS.Signals): void => {
   if (isShuttingDown) return;
   isShuttingDown = true;
   logger.info({ signal }, 'graceful_shutdown_started');

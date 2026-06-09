@@ -5,22 +5,24 @@ import type { ConversationState } from '../types/conversation.js';
 export class InMemoryConversationStore implements ConversationStore {
   private readonly states = new Map<string, ConversationState>();
 
-  async get(telegramId: string, nowMs = Date.now()): Promise<ConversationState | undefined> {
+  get(telegramId: string, nowMs = Date.now()): Promise<ConversationState | undefined> {
     const state = this.states.get(telegramId);
-    if (!state) return undefined;
+    if (!state) return Promise.resolve(undefined);
     if (isConversationExpired(state, nowMs)) {
       this.states.delete(telegramId);
-      return undefined;
+      return Promise.resolve(undefined);
     }
-    return state;
+    return Promise.resolve(state);
   }
 
-  async set(telegramId: string, state: ConversationState): Promise<void> {
+  set(telegramId: string, state: ConversationState): Promise<void> {
     this.states.set(telegramId, state);
+    return Promise.resolve();
   }
 
-  async clear(telegramId: string): Promise<void> {
+  clear(telegramId: string): Promise<void> {
     this.states.delete(telegramId);
+    return Promise.resolve();
   }
 
   size(): number {
