@@ -29,7 +29,7 @@ export const safeReply = async (
 export const editOrReply = async (
   ctx: BotContext,
   text: string,
-  extra?: Parameters<BotContext['reply']>[1],
+  extra?: Parameters<BotContext['editMessageText']>[1],
 ): Promise<DeliveryResult> => {
   if (typeof ctx.editMessageText === 'function' && ctx.callbackQuery) {
     try {

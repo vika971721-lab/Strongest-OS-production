@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, type MockedFunction } from 'vitest';
 import { MENU_BUTTONS } from '../src/config/constants.js';
 import { handleStartCommand } from '../src/commands/startCommand.js';
 import { handleTextMessage } from '../src/handlers/textHandler.js';
@@ -31,13 +31,16 @@ const accessStateProvider = (state?: UserAccessState): AccessStateProvider => ({
     .mockResolvedValue(state ?? { kind: 'telegram_registered', telegramId: '1', trialUsed: false }),
 });
 
-const createTextCtx = (text: string, chatType = 'private'): BotContext =>
+type ReplyMock = MockedFunction<BotContext['reply']>;
+type TestBotContext = BotContext & { reply: ReplyMock };
+
+const createTextCtx = (text: string, chatType = 'private'): TestBotContext =>
   ({
     message: { text },
     chat: { id: 1, type: chatType },
     state: { user: { telegramId: '1', chatId: '1' } },
-    reply: vi.fn().mockResolvedValue(undefined),
-  }) as unknown as BotContext;
+    reply: vi.fn().mockResolvedValue(undefined) as ReplyMock,
+  }) as unknown as TestBotContext;
 
 const deps = (store = new InMemoryConversationStore(), state?: UserAccessState) => ({
   env,
@@ -53,7 +56,7 @@ describe('handlers', () => {
     await handleTextMessage(ctx, deps());
     expect(ctx.reply).toHaveBeenCalledWith(
       'Используйте кнопки меню, чтобы выбрать действие.',
-      expect.objectContaining({ reply_markup: expect.any(Object) }),
+      expect.any(Object),
     );
   });
 

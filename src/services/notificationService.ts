@@ -3,7 +3,7 @@ export interface NotificationService {
 }
 
 export class MockNotificationService implements NotificationService {
-  async enqueue(_telegramId: string, _message: string): Promise<{ status: 'not_configured' }> {
-    return { status: 'not_configured' };
+  enqueue(_telegramId: string, _message: string): Promise<{ status: 'not_configured' }> {
+    return Promise.resolve({ status: 'not_configured' });
   }
 }

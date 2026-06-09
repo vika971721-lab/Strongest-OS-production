@@ -117,7 +117,7 @@ export const parseEnv = (source: NodeJS.ProcessEnv): AppEnv => {
     adminTelegramIds = parseAdminTelegramIds(parsed.data.ADMIN_TELEGRAM_IDS);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Invalid ADMIN_TELEGRAM_IDS';
-    throw new Error(`Invalid configuration: ${message}`);
+    throw new Error(`Invalid configuration: ${message}`, { cause: error });
   }
 
   const env: AppEnv = {

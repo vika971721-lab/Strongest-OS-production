@@ -54,8 +54,7 @@ export const createBot = (
 
   bot.use(async (ctx, next) => {
     const originalReply = ctx.reply.bind(ctx);
-    ctx.reply = ((text, extra) =>
-      originalReply(text, { parse_mode: 'HTML', ...extra })) as BotContext['reply'];
+    ctx.reply = (text, extra) => originalReply(text, { parse_mode: 'HTML', ...extra });
     await next();
   });
   bot.use(userContextMiddleware());
