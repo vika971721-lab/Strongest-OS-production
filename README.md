@@ -263,3 +263,81 @@ DISPLAY_TIMEZONE=Asia/Almaty
 ```
 
 Если переменная отсутствует, используется default `Asia/Almaty`. Реальный `.env` не требуется менять для запуска существующей конфигурации.
+
+## Этап 4: Telegram Stars payments
+
+Strongest OS продаёт цифровой доступ внутри Telegram через Telegram Stars. Для invoice используется `currency = XTR`, потому что Telegram Stars требуют валюту XTR для цифровых товаров, и `provider_token = ""`, потому что внешний платёжный провайдер для Stars не нужен. В invoice создаётся ровно один `LabeledPrice`; shipping, tips, телефон, email, адрес, внешние checkout URL и recurring subscriptions не используются.
+
+### Pricing config
+
+Единый pricing config читается из env и валидируется Zod как положительные целые числа:
+
+- `FIRST_PERIOD_STARS` — цена первого периода, default `100`;
+- `RENEWAL_PERIOD_STARS` — цена продления, default `150`;
+- `FIRST_PERIOD_DAYS` — длительность первого периода, default `30`;
+- `RENEWAL_PERIOD_DAYS` — длительность продления, default `30`;
+- `PAYMENT_ORDER_TTL_MINUTES` — срок жизни pending order, default `15`;
+- `DISPLAY_TIMEZONE` — timezone отображения дат, default `Asia/Almaty`.
+
+### Тарифы first_month и monthly_renewal
+
+Тариф определяется только по свежему состоянию пользователя и `subscriptions.trial_used`:
+
+- subscription отсутствует или `trial_used = false` → `first_month`;
+- `trial_used = true` → `monthly_renewal`;
+- `banned`, `deleted`, broken account link, unknown status или временная ошибка базы → invoice не создаётся.
+
+Проверка выполняется при открытии экрана, перед созданием order, в `pre_checkout_query` и при `successful_payment`; старая кнопка или старый invoice не считаются источником истины.
+
+### Payment order и invoice
+
+При нажатии `🚀 Оформить доступ` бот требует private chat, получает актуальное состояние пользователя, выбирает тариф, создаёт `payment_orders` order и короткий opaque `provider_invoice_payload` через `node:crypto`. Payload не содержит Telegram ID, email, UUID или секреты. Если для того же пользователя и плана уже есть pending order младше TTL, он переиспользуется; просроченный order помечается `expired`, paid order не меняется.
+
+После записи order бот отправляет Telegram Stars invoice с `provider_token = ""`, `currency = "XTR"`, одним price и payload order. Только после успешной отправки order помечается `pending`; при ошибке отправки order помечается `failed`.
+
+### Pre-checkout
+
+Handler `pre_checkout_query` всегда отвечает Telegram. Он проверяет invoice payload, order, статус, TTL, владельца order, `XTR`, сумму, provider, plan, повторную eligibility проверку первого тарифа, а также запреты `banned`, `deleted` и broken link. В pre-checkout не создаются Auth users, не генерируются пароли и не продлевается subscription.
+
+### Successful payment и идемпотентность
+
+Доступ выдаётся только после Telegram message с `successful_payment`. Основным ключом идемпотентности является `successful_payment.telegram_payment_charge_id`, который сохраняется как `payment_events.provider_event_id`; `provider_payment_charge_id` сохраняется дополнительно в sanitized raw payload/order. Если event уже processed, повторная доставка Telegram update не продлевает доступ повторно и показывает актуальный срок.
+
+Raw payload хранит только безопасные поля: currency, amount, invoice payload, Telegram/provider charge IDs, message/update IDs и timestamp. Полный ctx, секреты, пароль, env и история чата не сохраняются.
+
+### Account, subscription, retry и partial failures
+
+Supabase Auth account создаётся только после confirmed `successful_payment`. Если account уже существует, пароль не сбрасывается. Если account новый, пароль отправляется пользователю один раз в private chat; бот не сохраняет пароль и не отправляет его администраторам. Продление считается по формуле `base = expires_at > now ? expires_at : now`, затем добавляется оплаченный период; `trial_used` становится `true`, `first_payment_at` устанавливается только один раз, deletion markers очищаются.
+
+Partial failures не теряют платёж: event создаётся до account/subscription операций. Если AccountService или subscription update временно упали, unprocessed event можно безопасно догнать через пользовательскую кнопку `Проверить последнюю оплату` или admin retry. Для production добавлена SQL migration с UNIQUE constraints и RPC-заготовкой, чтобы subscription extension и `payment_events.processed_at` выполнялись атомарно в Postgres transaction.
+
+Особые статусы:
+
+- `expired`, `cancelled`, `marked_for_deletion` после оплаты восстанавливаются в `active`;
+- `banned` и `deleted` не активируются автоматически, payment event сохраняется для manual review;
+- race двух invoice первого тарифа конвертируется в обычное продление с audit event `first_month_race_converted_to_renewal`.
+
+### Пользовательская проверка и поддержка оплат
+
+Добавлены callback `Проверить последнюю оплату` и команда `/paysupport`. Пользователь видит инструкцию: не оплачивать повторно, проверить последнюю оплату и обратиться в поддержку, если Stars списаны, а доступ не появился.
+
+### Admin-команды оплаты
+
+- `/admin_payment <order_id>` — показывает безопасную информацию об order, events и subscription без UUID/секретов/паролей для пользователя;
+- `/admin_retry_payment <order_id>` — разрешена только admin, требует существующий successful payment event, не создаёт fake payment и не продлевает processed event повторно;
+- `/admin_extend <telegram_id> <days> [reason]` — admin-only ручное продление на 1..365 дней, без payment_event и без изменения `trial_used`, с audit log `admin_extension`.
+
+### Manual checklist
+
+1. В private chat открыть экран тарифа и нажать `🚀 Оформить доступ`.
+2. Убедиться, что Telegram invoice в XTR, сумма соответствует тарифу, provider token пустой.
+3. Оплатить invoice тестовыми Stars.
+4. Проверить, что до `successful_payment` доступ не выдан.
+5. После `successful_payment` проверить создание account только при первой покупке, выдачу пароля только в private chat и активную subscription на оплаченный период.
+6. Повторить update/payment delivery и убедиться, что срок не продлевается второй раз.
+7. Нажать `Проверить последнюю оплату` при pending/paid/unprocessed сценариях.
+8. Проверить `/admin_payment`, `/admin_retry_payment`, `/admin_extend` под admin и отказ для обычного пользователя.
+
+### Что остаётся для этапа промокодов
+
+На следующем этапе остаются `access_coupons`, подарочные промокоды и их реальное погашение. Scheduler, production webhook, Docker и GitHub Actions по-прежнему не входят в этап Telegram Stars.

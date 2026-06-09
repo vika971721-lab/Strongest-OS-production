@@ -3,6 +3,12 @@ import type { AppEnv } from './config/env.js';
 import { PUBLIC_BOT_COMMANDS } from './config/constants.js';
 import { handleAdminCommand } from './commands/adminCommand.js';
 import { handleAdminPreviewStatusCommand } from './commands/adminPreviewStatusCommand.js';
+import {
+  handleAdminExtendCommand,
+  handleAdminPaymentCommand,
+  handleAdminRetryPaymentCommand,
+  handlePaySupportCommand,
+} from './commands/paymentCommands.js';
 import { handleStartCommand } from './commands/startCommand.js';
 import {
   handleCancelCommand,
@@ -23,9 +29,23 @@ import { MockCouponService } from './services/couponService.js';
 import { MockAccountService, type AccountService } from './services/accountService.js';
 import { DefaultAccessStateService } from './services/accessStateService.js';
 import { InMemoryConversationStore } from './state/inMemoryConversationStore.js';
-import type { AccessStateProvider } from './types/accessState.js';
+import type { AccessStateProvider, UserAccessState } from './types/accessState.js';
 import type { BotContext } from './types/context.js';
 import { logger, normalizeError } from './utils/logger.js';
+import {
+  InMemoryPaymentOrderRepository,
+  type PaymentOrderRepository,
+} from './repositories/paymentOrderRepository.js';
+import {
+  InMemoryPaymentEventRepository,
+  type PaymentEventRepository,
+} from './repositories/paymentEventRepository.js';
+import {
+  handlePreCheckoutQuery,
+  handleSuccessfulPayment,
+  NotConfiguredPaymentAccessGateway,
+  type PaymentAccessGateway,
+} from './services/paymentFlow.js';
 import { MESSAGES } from './utils/messages.js';
 
 export interface BotDependencies {
@@ -34,6 +54,9 @@ export interface BotDependencies {
   couponService?: MockCouponService;
   accountService?: AccountService;
   accessStateProvider?: AccessStateProvider;
+  paymentOrderRepository?: PaymentOrderRepository;
+  paymentEventRepository?: PaymentEventRepository;
+  paymentAccessGateway?: PaymentAccessGateway;
 }
 
 export const createBot = (
@@ -48,7 +71,21 @@ export const createBot = (
   const couponService = dependencies.couponService ?? new MockCouponService();
   const accountService = dependencies.accountService ?? new MockAccountService();
   const accessStateProvider = dependencies.accessStateProvider ?? new DefaultAccessStateService();
-  const uiDeps = { env, conversationStore, accessStateProvider, accountService };
+  const paymentOrderRepository =
+    dependencies.paymentOrderRepository ?? new InMemoryPaymentOrderRepository();
+  const paymentEventRepository =
+    dependencies.paymentEventRepository ?? new InMemoryPaymentEventRepository();
+  const paymentAccessGateway =
+    dependencies.paymentAccessGateway ?? new BotPaymentAccessGateway(accessStateProvider);
+  const uiDeps = {
+    env,
+    conversationStore,
+    accessStateProvider,
+    accountService,
+    paymentOrderRepository,
+    paymentEventRepository,
+    paymentAccessGateway,
+  };
 
   bot.use(errorMiddleware());
 
@@ -80,8 +117,45 @@ export const createBot = (
   bot.command('cancel', async (ctx) => handleCancelCommand(ctx, uiDeps));
   bot.command('admin', async (ctx) => handleAdminCommand(ctx, env));
   bot.command('admin_preview_status', async (ctx) => handleAdminPreviewStatusCommand(ctx, env));
+  bot.command('paysupport', async (ctx) => handlePaySupportCommand(ctx, env));
+  bot.command('admin_payment', async (ctx) =>
+    handleAdminPaymentCommand(
+      ctx,
+      env,
+      paymentOrderRepository,
+      paymentEventRepository,
+      paymentAccessGateway,
+    ),
+  );
+  bot.command('admin_retry_payment', async (ctx) =>
+    handleAdminRetryPaymentCommand(ctx, env, paymentOrderRepository, paymentEventRepository),
+  );
+  bot.command('admin_extend', async (ctx) =>
+    handleAdminExtendCommand(ctx, env, paymentAccessGateway),
+  );
   bot.on('callback_query', async (ctx) => handleCallbackQuery(ctx, uiDeps));
+  bot.on('pre_checkout_query', async (ctx) =>
+    handlePreCheckoutQuery({
+      ctx,
+      env,
+      accessGateway: paymentAccessGateway,
+      orderRepository: paymentOrderRepository,
+    }),
+  );
   bot.on('text', async (ctx) => handleTextMessage(ctx, { ...uiDeps, couponService }));
+  bot.on('message', async (ctx, next) => {
+    if (ctx.message && 'successful_payment' in ctx.message) {
+      await handleSuccessfulPayment({
+        ctx,
+        env,
+        accessGateway: paymentAccessGateway,
+        orderRepository: paymentOrderRepository,
+        eventRepository: paymentEventRepository,
+      });
+      return;
+    }
+    await next();
+  });
   bot.on('message', async (ctx) => handleUnknownMessage(ctx));
 
   bot.catch((error, ctx) => {
@@ -99,3 +173,16 @@ export const createBot = (
 
   return bot;
 };
+
+class BotPaymentAccessGateway
+  extends NotConfiguredPaymentAccessGateway
+  implements PaymentAccessGateway
+{
+  constructor(private readonly accessStateProvider: AccessStateProvider) {
+    super();
+  }
+
+  override async getAccessState(telegramId: string): Promise<UserAccessState> {
+    return this.accessStateProvider.getUserAccessState(telegramId);
+  }
+}

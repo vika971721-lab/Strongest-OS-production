@@ -26,6 +26,8 @@ export const CALLBACK_DATA = {
   navRetryAccess: 'nav:retry:access',
   navPasswordRecovery: 'nav:reset',
   mockPaymentInfo: 'pay:next-stage',
+  createPayment: 'pay:create',
+  checkLastPayment: 'pay:check:last',
   accountResetConfirm: 'account:reset:confirm',
   accountResetCancel: 'account:reset:cancel',
   couponStart: 'coupon:start',

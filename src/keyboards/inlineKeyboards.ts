@@ -10,14 +10,7 @@ const compact = <T>(items: (T | undefined)[]): T[] =>
 export const createPlanKeyboard = (canPay: boolean) =>
   Markup.inlineKeyboard(
     canPay
-      ? [
-          [
-            Markup.button.callback(
-              'Оплата будет подключена следующим этапом',
-              CALLBACK_DATA.mockPaymentInfo,
-            ),
-          ],
-        ]
+      ? [[Markup.button.callback('🚀 Оформить доступ', CALLBACK_DATA.createPayment)]]
       : [[Markup.button.callback('Поддержка', CALLBACK_DATA.navSupport)]],
   );
 
@@ -91,3 +84,11 @@ export const createCouponCancelKeyboard = () =>
 
 export const createRetryKeyboard = () =>
   Markup.inlineKeyboard([[Markup.button.callback('Повторить', CALLBACK_DATA.navRetryAccess)]]);
+
+export const createPaymentSupportKeyboard = (supportUsername?: string) => {
+  const link = createSupportLink(supportUsername);
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('Проверить последнюю оплату', CALLBACK_DATA.checkLastPayment)],
+    ...(link ? [[Markup.button.url('Написать в поддержку', link)]] : []),
+  ]);
+};
