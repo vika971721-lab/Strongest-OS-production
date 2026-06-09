@@ -25,6 +25,8 @@ import {
   buildTermsMessage,
   MESSAGES,
 } from '../utils/messages.js';
+import { handleCreatePaymentInvoice, processPaymentEvent } from '../services/paymentFlow.js';
+import { formatDateTime } from '../utils/dates.js';
 import {
   handleAccessScreen,
   handleCouponCancel,
@@ -110,6 +112,21 @@ export const handleCallbackQuery = async (ctx: BotContext, deps: UiDependencies)
     case CALLBACK_DATA.navPasswordRecovery:
       await handlePasswordRecovery(ctx, deps);
       return;
+    case CALLBACK_DATA.createPayment:
+      if (!deps.paymentAccessGateway || !deps.paymentOrderRepository) {
+        await editOrReply(ctx, MESSAGES.paymentNextStage);
+        return;
+      }
+      await handleCreatePaymentInvoice({
+        ctx,
+        env: deps.env,
+        accessGateway: deps.paymentAccessGateway,
+        orderRepository: deps.paymentOrderRepository,
+      });
+      return;
+    case CALLBACK_DATA.checkLastPayment:
+      await handleCheckLastPayment(ctx, deps);
+      return;
     case CALLBACK_DATA.mockPaymentInfo:
       await editOrReply(ctx, MESSAGES.paymentNextStage);
       return;
@@ -154,4 +171,53 @@ export const handleCallbackQuery = async (ctx: BotContext, deps: UiDependencies)
       return;
     }
   }
+};
+
+const handleCheckLastPayment = async (ctx: BotContext, deps: UiDependencies): Promise<void> => {
+  if (!(await requirePrivateChat(ctx))) return;
+  const telegramId = ctx.state.user?.telegramId;
+  if (!telegramId || !deps.paymentOrderRepository) return;
+  const order = await deps.paymentOrderRepository.findLatestByTelegramId(telegramId);
+  if (!order) {
+    await ctx.reply('Последний счёт не найден. Создайте новый счёт.');
+    return;
+  }
+  if (order.telegramId !== telegramId) {
+    await ctx.reply('Этот счёт создан для другого пользователя.');
+    return;
+  }
+  if (order.status === 'pending' || order.status === 'created') {
+    await ctx.reply(
+      'Подтверждение оплаты ещё не получено. Если Stars списаны, не оплачивайте повторно и попробуйте проверку позже.',
+    );
+    return;
+  }
+  if (order.status === 'failed' || order.status === 'expired' || order.status === 'cancelled') {
+    await ctx.reply('Последний счёт не оплачен или устарел. Создайте новый счёт.');
+    return;
+  }
+  const event = deps.paymentEventRepository
+    ? (await deps.paymentEventRepository.findByOrderId(order.orderId))[0]
+    : undefined;
+  if (event && !event.processedAt && deps.paymentAccessGateway && deps.paymentEventRepository) {
+    logger.info({ telegramId, orderId: order.orderId }, 'payment_retry_started');
+    const result = await processPaymentEvent({
+      order,
+      providerEventId: event.providerEventId,
+      rawPayload: event.rawPayload,
+      eventRepository: deps.paymentEventRepository,
+      orderRepository: deps.paymentOrderRepository,
+      accessGateway: deps.paymentAccessGateway,
+    });
+    logger.info({ telegramId, orderId: order.orderId }, 'payment_retry_completed');
+    await ctx.reply(
+      result.expiresAt
+        ? `Оплата обработана. Доступ активен до: ${formatDateTime(result.expiresAt, deps.env.displayTimezone)}`
+        : 'Оплата отправлена на ручную проверку.',
+    );
+    return;
+  }
+  await ctx.reply(
+    'Оплата обработана. Откройте раздел “Мой доступ”, чтобы увидеть актуальный срок.',
+  );
 };

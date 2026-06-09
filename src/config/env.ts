@@ -20,6 +20,7 @@ export interface AppEnv {
   webhookSecret?: string;
   port: number;
   pricing: PricingConfig;
+  paymentOrderTtlMinutes?: number;
 }
 
 export interface SafeEnvLogData {
@@ -36,6 +37,7 @@ export interface SafeEnvLogData {
   hasWebhookSecret: boolean;
   port: number;
   pricing: PricingConfig;
+  paymentOrderTtlMinutes?: number;
 }
 
 const trimOptional = (value: unknown): string | undefined => {
@@ -101,6 +103,7 @@ const rawEnvSchema = z.object({
   RENEWAL_PERIOD_STARS: positiveIntegerFromEnv('150'),
   FIRST_PERIOD_DAYS: positiveIntegerFromEnv('30'),
   RENEWAL_PERIOD_DAYS: positiveIntegerFromEnv('30'),
+  PAYMENT_ORDER_TTL_MINUTES: positiveIntegerFromEnv('15'),
 });
 
 export const parseEnv = (source: NodeJS.ProcessEnv): AppEnv => {
@@ -132,6 +135,7 @@ export const parseEnv = (source: NodeJS.ProcessEnv): AppEnv => {
       firstPeriodDays: parsed.data.FIRST_PERIOD_DAYS,
       renewalPeriodDays: parsed.data.RENEWAL_PERIOD_DAYS,
     },
+    paymentOrderTtlMinutes: parsed.data.PAYMENT_ORDER_TTL_MINUTES,
   };
 
   if (parsed.data.BOT_TOKEN) env.botToken = parsed.data.BOT_TOKEN;
@@ -181,4 +185,5 @@ export const toSafeEnvLogData = (env: AppEnv): SafeEnvLogData => ({
   hasWebhookSecret: Boolean(env.webhookSecret),
   port: env.port,
   pricing: env.pricing,
+  paymentOrderTtlMinutes: env.paymentOrderTtlMinutes ?? 15,
 });

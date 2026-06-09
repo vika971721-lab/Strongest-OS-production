@@ -15,6 +15,7 @@ export class InMemoryCallbackRateLimiter {
     private readonly maxEntries = 1_000,
     private readonly criticalActions = new Set<string>([
       CALLBACK_DATA.mockPaymentInfo,
+      CALLBACK_DATA.createPayment,
       CALLBACK_DATA.accountResetConfirm,
       CALLBACK_DATA.navPlans,
     ]),

@@ -13,6 +13,9 @@ import {
 } from '../keyboards/inlineKeyboards.js';
 import { requirePrivateChat } from '../middleware/privateChat.js';
 import type { AccountService } from '../services/accountService.js';
+import type { PaymentEventRepository } from '../repositories/paymentEventRepository.js';
+import type { PaymentOrderRepository } from '../repositories/paymentOrderRepository.js';
+import type { PaymentAccessGateway } from '../services/paymentFlow.js';
 import { createAwaitingCouponState, type ConversationStore } from '../state/conversationState.js';
 import type { AccessStateProvider } from '../types/accessState.js';
 import type { BotContext } from '../types/context.js';
@@ -39,6 +42,9 @@ export interface UiDependencies {
   conversationStore: ConversationStore;
   accessStateProvider: AccessStateProvider;
   accountService: AccountService;
+  paymentOrderRepository?: PaymentOrderRepository;
+  paymentEventRepository?: PaymentEventRepository;
+  paymentAccessGateway?: PaymentAccessGateway;
 }
 
 const telegramIdFromContext = (ctx: BotContext): string | undefined => ctx.state.user?.telegramId;
