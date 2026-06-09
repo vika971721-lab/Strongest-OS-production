@@ -1,19 +1,22 @@
 import { CANCEL_BUTTON_TEXT, MENU_BUTTONS } from '../config/constants.js';
-import type { AppEnv } from '../config/env.js';
-import type { CouponService } from '../services/couponService.js';
-import type { ConversationStore } from '../state/conversationState.js';
-import type { BotContext } from '../types/context.js';
 import { createMainMenuKeyboard } from '../keyboards/mainMenuKeyboard.js';
+import { requirePrivateChat } from '../middleware/privateChat.js';
+import type { CouponService } from '../services/couponService.js';
+import { isConversationExpired } from '../state/conversationState.js';
+import type { BotContext } from '../types/context.js';
+import { logger } from '../utils/logger.js';
 import { MESSAGES } from '../utils/messages.js';
 import {
-  handleActivateCoupon,
-  handleBuyAccess,
+  handleAccessScreen,
+  handleCouponStart,
   handleFeatures,
   handleInstallation,
-  handleMyAccess,
-  handleRestoreAccess,
+  handleMainMenu,
+  handlePasswordRecovery,
+  handlePlanScreen,
   handleSupport,
   handleTerms,
+  type UiDependencies,
 } from './menuHandlers.js';
 import { handleUnknownMessage } from './unknownHandler.js';
 
@@ -25,11 +28,7 @@ export const getTextMessage = (ctx: BotContext): string | undefined => {
 
 export const handleTextMessage = async (
   ctx: BotContext,
-  dependencies: {
-    env: AppEnv;
-    conversationStore: ConversationStore;
-    couponService: CouponService;
-  },
+  dependencies: UiDependencies & { couponService: CouponService },
 ): Promise<void> => {
   const text = getTextMessage(ctx);
   if (!text) return;
@@ -45,37 +44,51 @@ export const handleTextMessage = async (
   if (telegramId) {
     const state = await dependencies.conversationStore.get(telegramId);
     if (state?.name === 'awaiting_coupon') {
+      if (!(await requirePrivateChat(ctx))) return;
       await dependencies.conversationStore.clear(telegramId);
-      await dependencies.couponService.redeem(text.trim(), telegramId);
+      if (isConversationExpired(state)) {
+        await ctx.reply(
+          'Время ввода промокода истекло. Попробуйте начать заново.',
+          createMainMenuKeyboard(),
+        );
+        return;
+      }
+      logger.info({ telegramId }, 'coupon_code_received');
       await ctx.reply(MESSAGES.couponNotConfigured, createMainMenuKeyboard());
       return;
     }
   }
 
   switch (text) {
+    case '/menu':
+      await handleMainMenu(ctx, dependencies);
+      return;
+    case '/status':
+      await handleAccessScreen(ctx, dependencies);
+      return;
     case MENU_BUTTONS.buyAccess:
-      await handleBuyAccess(ctx);
+      await handlePlanScreen(ctx, dependencies);
       return;
     case MENU_BUTTONS.myAccess:
-      await handleMyAccess(ctx);
+      await handleAccessScreen(ctx, dependencies);
       return;
     case MENU_BUTTONS.activateCoupon:
-      await handleActivateCoupon(ctx, dependencies.conversationStore);
+      await handleCouponStart(ctx, dependencies);
       return;
     case MENU_BUTTONS.restoreAccess:
-      await handleRestoreAccess(ctx);
+      await handlePasswordRecovery(ctx, dependencies);
       return;
     case MENU_BUTTONS.features:
-      await handleFeatures(ctx);
+      await handleFeatures(ctx, dependencies);
       return;
     case MENU_BUTTONS.installation:
-      await handleInstallation(ctx, dependencies.env);
+      await handleInstallation(ctx, dependencies);
       return;
     case MENU_BUTTONS.terms:
       await handleTerms(ctx);
       return;
     case MENU_BUTTONS.support:
-      await handleSupport(ctx, dependencies.env);
+      await handleSupport(ctx, dependencies);
       return;
     default:
       await handleUnknownMessage(ctx);

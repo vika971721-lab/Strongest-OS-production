@@ -1,36 +1,157 @@
-import { CALLBACK_DATA } from '../config/constants.js';
-import type { PaymentService } from '../services/paymentService.js';
+import { CALLBACK_DATA, type CallbackData } from '../config/constants.js';
+import {
+  createFeaturesKeyboard,
+  createInstallationKeyboard,
+  createPasswordCreatedKeyboard,
+  createPlanKeyboard,
+  createRetryKeyboard,
+  createSupportKeyboard,
+  createTermsKeyboard,
+} from '../keyboards/inlineKeyboards.js';
+import { requirePrivateChat } from '../middleware/privateChat.js';
 import type { BotContext } from '../types/context.js';
-import { MESSAGES } from '../utils/messages.js';
+import { editOrReply } from '../utils/delivery.js';
+import { logger } from '../utils/logger.js';
+import {
+  buildAndroidInstallationMessage,
+  buildDesktopInstallationMessage,
+  buildFeaturesMessage,
+  buildInstallationMessage,
+  buildIphoneInstallationMessage,
+  buildPasswordCreatedMessage,
+  buildPlanMessage,
+  buildPrivacyMessage,
+  buildSupportMessage,
+  buildTermsMessage,
+  MESSAGES,
+} from '../utils/messages.js';
+import {
+  handleAccessScreen,
+  handleCouponCancel,
+  handleCouponStart,
+  handleMainMenu,
+  handlePasswordRecovery,
+  handleSupport,
+  type UiDependencies,
+} from './menuHandlers.js';
 
-export const handleCallbackQuery = async (
-  ctx: BotContext,
-  paymentService: PaymentService,
-): Promise<void> => {
+const callbackValues = new Set<string>(Object.values(CALLBACK_DATA));
+const isCallbackData = (value: string): value is CallbackData => callbackValues.has(value);
+
+export const handleCallbackQuery = async (ctx: BotContext, deps: UiDependencies): Promise<void> => {
   const callbackQuery = ctx.callbackQuery;
   if (!callbackQuery || !('data' in callbackQuery)) return;
-
   const data = callbackQuery.data;
   await ctx.answerCbQuery();
 
-  if (data === CALLBACK_DATA.testPayment) {
-    const telegramId = ctx.state.user?.telegramId ?? String(callbackQuery.from.id);
-    const result = await paymentService.createPayment({
-      telegramId,
-      amountStars: 0,
-      description: 'Mock payment availability check',
-    });
-    await ctx.reply(result.message);
+  if (!isCallbackData(data)) {
+    logger.warn({ telegramId: ctx.state.user?.telegramId }, 'unknown_callback_received');
+    await editOrReply(ctx, MESSAGES.staleButton);
     return;
   }
 
-  if (data === CALLBACK_DATA.installAndroid) {
-    await ctx.reply(MESSAGES.androidInstallation);
-    return;
-  }
-
-  if (data === CALLBACK_DATA.installIphone) {
-    await ctx.reply(MESSAGES.iphoneInstallation);
-    return;
+  switch (data) {
+    case CALLBACK_DATA.navMain:
+      await handleMainMenu(ctx, deps);
+      return;
+    case CALLBACK_DATA.navAccess:
+    case CALLBACK_DATA.navRetryAccess:
+      await handleAccessScreen(ctx, deps);
+      return;
+    case CALLBACK_DATA.navPlans: {
+      if (!(await requirePrivateChat(ctx))) return;
+      const telegramId = ctx.state.user?.telegramId;
+      if (!telegramId) return;
+      const state = await deps.accessStateProvider.getUserAccessState(telegramId);
+      const canPay = ![
+        'banned',
+        'deleted',
+        'broken_link',
+        'unknown_status',
+        'temporarily_unavailable',
+      ].includes(state.kind);
+      await editOrReply(
+        ctx,
+        buildPlanMessage(state, deps.env.pricing),
+        state.kind === 'temporarily_unavailable'
+          ? createRetryKeyboard()
+          : createPlanKeyboard(canPay),
+      );
+      return;
+    }
+    case CALLBACK_DATA.navFeatures:
+      await editOrReply(ctx, buildFeaturesMessage(), createFeaturesKeyboard(deps.env.appUrl));
+      return;
+    case CALLBACK_DATA.navInstall:
+      await editOrReply(
+        ctx,
+        buildInstallationMessage(),
+        createInstallationKeyboard(deps.env.appUrl),
+      );
+      return;
+    case CALLBACK_DATA.navInstallAndroid:
+      await editOrReply(ctx, buildAndroidInstallationMessage());
+      return;
+    case CALLBACK_DATA.navInstallIos:
+      await editOrReply(ctx, buildIphoneInstallationMessage());
+      return;
+    case CALLBACK_DATA.navInstallDesktop:
+      await editOrReply(ctx, buildDesktopInstallationMessage());
+      return;
+    case CALLBACK_DATA.navTerms:
+      await editOrReply(ctx, buildTermsMessage(), createTermsKeyboard());
+      return;
+    case CALLBACK_DATA.navPrivacy:
+      await editOrReply(ctx, buildPrivacyMessage());
+      return;
+    case CALLBACK_DATA.navSupport:
+      await handleSupport(ctx, deps);
+      return;
+    case CALLBACK_DATA.navPasswordRecovery:
+      await handlePasswordRecovery(ctx, deps);
+      return;
+    case CALLBACK_DATA.mockPaymentInfo:
+      await editOrReply(ctx, MESSAGES.paymentNextStage);
+      return;
+    case CALLBACK_DATA.couponStart:
+      await handleCouponStart(ctx, deps);
+      return;
+    case CALLBACK_DATA.couponCancel:
+    case CALLBACK_DATA.accountResetCancel:
+      await handleCouponCancel(ctx, deps);
+      return;
+    case CALLBACK_DATA.accountResetConfirm: {
+      if (!(await requirePrivateChat(ctx))) return;
+      const telegramId = ctx.state.user?.telegramId;
+      if (!telegramId) return;
+      const state = await deps.accessStateProvider.getUserAccessState(telegramId);
+      if (
+        ![
+          'account_pending',
+          'active',
+          'expired',
+          'cancelled',
+          'marked_for_deletion',
+          'banned',
+        ].includes(state.kind)
+      ) {
+        await editOrReply(
+          ctx,
+          buildSupportMessage(false),
+          createSupportKeyboard(deps.env.supportUsername),
+        );
+        return;
+      }
+      const result = await deps.accountService.resetPassword(telegramId);
+      if (result.status === 'created' && result.loginEmail && result.password) {
+        await ctx.reply(
+          buildPasswordCreatedMessage(result.loginEmail, result.password),
+          createPasswordCreatedKeyboard(deps.env.appUrl),
+        );
+        return;
+      }
+      await ctx.reply(result.message);
+      return;
+    }
   }
 };

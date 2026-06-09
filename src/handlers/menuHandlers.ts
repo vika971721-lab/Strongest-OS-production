@@ -1,62 +1,190 @@
-import { Markup } from 'telegraf';
-import { CALLBACK_DATA } from '../config/constants.js';
 import type { AppEnv } from '../config/env.js';
-import { createCancellationKeyboard } from '../keyboards/cancellationKeyboard.js';
-import { createInstallationKeyboard } from '../keyboards/installationKeyboard.js';
 import { createMainMenuKeyboard } from '../keyboards/mainMenuKeyboard.js';
+import {
+  createAccessKeyboard,
+  createCouponCancelKeyboard,
+  createFeaturesKeyboard,
+  createInstallationKeyboard,
+  createPasswordRecoveryKeyboard,
+  createPlanKeyboard,
+  createRetryKeyboard,
+  createSupportKeyboard,
+  createTermsKeyboard,
+} from '../keyboards/inlineKeyboards.js';
+import { requirePrivateChat } from '../middleware/privateChat.js';
+import type { AccountService } from '../services/accountService.js';
 import { createAwaitingCouponState, type ConversationStore } from '../state/conversationState.js';
+import type { AccessStateProvider } from '../types/accessState.js';
 import type { BotContext } from '../types/context.js';
-import { MESSAGES } from '../utils/messages.js';
+import { logger } from '../utils/logger.js';
+import {
+  buildAccessMessage,
+  buildAndroidInstallationMessage,
+  buildCouponPromptMessage,
+  buildDesktopInstallationMessage,
+  buildFeaturesMessage,
+  buildInstallationMessage,
+  buildIphoneInstallationMessage,
+  buildPasswordRecoveryMessage,
+  buildPlanMessage,
+  buildPrivacyMessage,
+  buildSupportMessage,
+  buildTermsMessage,
+  MESSAGES,
+} from '../utils/messages.js';
 import { createSupportLink } from '../utils/telegram.js';
 
-export const handleBuyAccess = async (ctx: BotContext): Promise<void> => {
+export interface UiDependencies {
+  env: AppEnv;
+  conversationStore: ConversationStore;
+  accessStateProvider: AccessStateProvider;
+  accountService: AccountService;
+}
+
+const telegramIdFromContext = (ctx: BotContext): string | undefined => ctx.state.user?.telegramId;
+
+export const handleMainMenu = async (ctx: BotContext, deps: UiDependencies): Promise<void> => {
+  const telegramId = telegramIdFromContext(ctx);
+  if (telegramId) await deps.conversationStore.clear(telegramId);
+  logger.info({ telegramId }, 'menu_opened');
+  await ctx.reply('Главное меню Strongest OS.', createMainMenuKeyboard());
+};
+
+export const handlePlanScreen = async (ctx: BotContext, deps: UiDependencies): Promise<void> => {
+  if (!(await requirePrivateChat(ctx))) return;
+  const telegramId = telegramIdFromContext(ctx);
+  if (!telegramId) return;
+  logger.info({ telegramId }, 'plan_screen_opened');
+  const state = await deps.accessStateProvider.getUserAccessState(telegramId);
+  const canPay = ![
+    'banned',
+    'deleted',
+    'broken_link',
+    'unknown_status',
+    'temporarily_unavailable',
+  ].includes(state.kind);
+  const keyboard =
+    state.kind === 'temporarily_unavailable' ? createRetryKeyboard() : createPlanKeyboard(canPay);
+  await ctx.reply(buildPlanMessage(state, deps.env.pricing), keyboard);
+};
+
+export const handleAccessScreen = async (ctx: BotContext, deps: UiDependencies): Promise<void> => {
+  if (!(await requirePrivateChat(ctx))) return;
+  const telegramId = telegramIdFromContext(ctx);
+  if (!telegramId) return;
+  logger.info({ telegramId }, 'access_screen_opened');
+  const state = await deps.accessStateProvider.getUserAccessState(telegramId);
+  const keyboard =
+    state.kind === 'temporarily_unavailable'
+      ? createRetryKeyboard()
+      : createAccessKeyboard(state.kind, deps.env.appUrl);
+  await ctx.reply(buildAccessMessage(state, deps.env.displayTimezone), keyboard);
+};
+
+export const handleCouponStart = async (ctx: BotContext, deps: UiDependencies): Promise<void> => {
+  if (!(await requirePrivateChat(ctx))) return;
+  const telegramId = telegramIdFromContext(ctx);
+  if (!telegramId) return;
+  const state = await deps.accessStateProvider.getUserAccessState(telegramId);
+  if (state.kind === 'banned') {
+    await ctx.reply(
+      'Активация промокода недоступна, пока аккаунт ограничен.\n\nОбратитесь в поддержку.',
+      createSupportKeyboard(deps.env.supportUsername),
+    );
+    return;
+  }
+  if (state.kind === 'deleted') {
+    await ctx.reply(
+      'Данные аккаунта были удалены.\n\nОбратитесь в поддержку.',
+      createSupportKeyboard(deps.env.supportUsername),
+    );
+    return;
+  }
+  await deps.conversationStore.set(telegramId, createAwaitingCouponState());
+  logger.info({ telegramId }, 'coupon_flow_started');
+  await ctx.reply(buildCouponPromptMessage(), createCouponCancelKeyboard());
+};
+
+export const handleCouponCancel = async (ctx: BotContext, deps: UiDependencies): Promise<void> => {
+  const telegramId = telegramIdFromContext(ctx);
+  if (telegramId) await deps.conversationStore.clear(telegramId);
+  logger.info({ telegramId }, 'coupon_flow_cancelled');
+  await ctx.reply(MESSAGES.cancelled, createMainMenuKeyboard());
+};
+
+export const handlePasswordRecovery = async (
+  ctx: BotContext,
+  deps: UiDependencies,
+): Promise<void> => {
+  if (!(await requirePrivateChat(ctx))) {
+    await ctx.reply(MESSAGES.passwordPrivateOnly);
+    return;
+  }
+  const telegramId = telegramIdFromContext(ctx);
+  if (!telegramId) return;
+  logger.info({ telegramId }, 'password_recovery_opened');
+  const state = await deps.accessStateProvider.getUserAccessState(telegramId);
+  const allowReset = [
+    'account_pending',
+    'active',
+    'expired',
+    'cancelled',
+    'marked_for_deletion',
+    'banned',
+  ].includes(state.kind);
   await ctx.reply(
-    MESSAGES.buyAccess,
-    Markup.inlineKeyboard([[Markup.button.callback('Тестовая оплата', CALLBACK_DATA.testPayment)]]),
+    buildPasswordRecoveryMessage(state),
+    allowReset ? createPasswordRecoveryKeyboard() : createSupportKeyboard(deps.env.supportUsername),
   );
 };
 
-export const handleMyAccess = async (ctx: BotContext): Promise<void> => {
-  await ctx.reply(MESSAGES.myAccess, createMainMenuKeyboard());
+export const handleFeatures = async (ctx: BotContext, deps: UiDependencies): Promise<void> => {
+  logger.info({ telegramId: telegramIdFromContext(ctx) }, 'features_opened');
+  await ctx.reply(buildFeaturesMessage(), createFeaturesKeyboard(deps.env.appUrl));
 };
 
-export const handleActivateCoupon = async (
-  ctx: BotContext,
-  conversationStore: ConversationStore,
-): Promise<void> => {
-  const telegramId = ctx.state.user?.telegramId;
-  if (telegramId) await conversationStore.set(telegramId, createAwaitingCouponState());
-  await ctx.reply(MESSAGES.couponPrompt, createCancellationKeyboard());
+export const handleInstallation = async (ctx: BotContext, deps: UiDependencies): Promise<void> => {
+  logger.info(
+    { telegramId: telegramIdFromContext(ctx), hasAppUrl: Boolean(deps.env.appUrl) },
+    'installation_opened',
+  );
+  const suffix = deps.env.appUrl ? '' : '\n\nАдрес Strongest OS временно не настроен.';
+  await ctx.reply(
+    `${buildInstallationMessage()}${suffix}`,
+    createInstallationKeyboard(deps.env.appUrl),
+  );
 };
 
-export const handleRestoreAccess = async (ctx: BotContext): Promise<void> => {
-  await ctx.reply(MESSAGES.restoreAccess, createMainMenuKeyboard());
+export const handleInstallationAndroid = async (ctx: BotContext): Promise<void> => {
+  await ctx.reply(buildAndroidInstallationMessage());
 };
 
-export const handleFeatures = async (ctx: BotContext): Promise<void> => {
-  await ctx.reply(MESSAGES.features, createMainMenuKeyboard());
+export const handleInstallationIos = async (ctx: BotContext): Promise<void> => {
+  await ctx.reply(buildIphoneInstallationMessage());
 };
 
-export const handleInstallation = async (ctx: BotContext, env: AppEnv): Promise<void> => {
-  const message = env.appUrl
-    ? MESSAGES.installation
-    : `${MESSAGES.installation}\n\n${MESSAGES.appUrlMissing}`;
-  await ctx.reply(message, createInstallationKeyboard(env.appUrl));
+export const handleInstallationDesktop = async (ctx: BotContext): Promise<void> => {
+  await ctx.reply(buildDesktopInstallationMessage());
 };
 
 export const handleTerms = async (ctx: BotContext): Promise<void> => {
-  await ctx.reply(MESSAGES.terms, createMainMenuKeyboard());
+  logger.info({ telegramId: telegramIdFromContext(ctx) }, 'terms_opened');
+  await ctx.reply(buildTermsMessage(), createTermsKeyboard());
 };
 
-export const handleSupport = async (ctx: BotContext, env: AppEnv): Promise<void> => {
-  const supportLink = createSupportLink(env.supportUsername);
-  if (!supportLink) {
-    await ctx.reply(MESSAGES.supportMissing, createMainMenuKeyboard());
-    return;
-  }
+export const handlePrivacy = async (ctx: BotContext): Promise<void> => {
+  logger.info({ telegramId: telegramIdFromContext(ctx) }, 'privacy_opened');
+  await ctx.reply(buildPrivacyMessage());
+};
 
+export const handleSupport = async (ctx: BotContext, deps: UiDependencies): Promise<void> => {
+  const supportLink = createSupportLink(deps.env.supportUsername);
+  logger.info(
+    { telegramId: telegramIdFromContext(ctx), configured: Boolean(supportLink) },
+    'support_opened',
+  );
   await ctx.reply(
-    MESSAGES.supportReady,
-    Markup.inlineKeyboard([[Markup.button.url('Написать в поддержку', supportLink)]]),
+    buildSupportMessage(Boolean(supportLink)),
+    createSupportKeyboard(deps.env.supportUsername),
   );
 };
