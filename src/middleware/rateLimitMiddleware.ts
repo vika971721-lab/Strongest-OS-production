@@ -13,7 +13,11 @@ export class InMemoryCallbackRateLimiter {
   constructor(
     private readonly windowMs = 3_000,
     private readonly maxEntries = 1_000,
-    private readonly criticalActions = new Set<string>([CALLBACK_DATA.testPayment]),
+    private readonly criticalActions = new Set<string>([
+      CALLBACK_DATA.mockPaymentInfo,
+      CALLBACK_DATA.accountResetConfirm,
+      CALLBACK_DATA.navPlans,
+    ]),
   ) {}
 
   check(key: string, action: string, nowMs = Date.now()): RateLimitDecision {

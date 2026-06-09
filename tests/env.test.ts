@@ -21,6 +21,7 @@ describe('env parsing', () => {
 
     expect(env.port).toBe(3000);
     expect(env.appUrl).toBe('https://strongest.sanau-ai.kz');
+    expect(env.displayTimezone).toBe('Asia/Almaty');
     expect(env.pricing).toEqual({
       firstPeriodStars: 100,
       renewalPeriodStars: 150,
@@ -35,6 +36,12 @@ describe('env parsing', () => {
 
   it('rejects invalid ADMIN_TELEGRAM_IDS', () => {
     expect(() => parseAdminTelegramIds('123, name')).toThrow('Invalid ADMIN_TELEGRAM_IDS');
+  });
+
+  it('rejects invalid DISPLAY_TIMEZONE', () => {
+    expect(() => parseEnv({ ...baseEnv, DISPLAY_TIMEZONE: 'Invalid/Zone' })).toThrow(
+      'Invalid configuration',
+    );
   });
 
   it('does not serialize secrets into safe log data', () => {

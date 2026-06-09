@@ -5,14 +5,17 @@ import { handleTextMessage } from '../src/handlers/textHandler.js';
 import { InMemoryConversationStore } from '../src/state/inMemoryConversationStore.js';
 import { createAwaitingCouponState } from '../src/state/conversationState.js';
 import { MockCouponService } from '../src/services/couponService.js';
+import { MockAccountService } from '../src/services/accountService.js';
 import type { AppEnv } from '../src/config/env.js';
 import type { BotContext } from '../src/types/context.js';
+import type { AccessStateProvider, UserAccessState } from '../src/types/accessState.js';
 
 const env: AppEnv = {
   nodeEnv: 'development',
   botMode: 'polling',
   botToken: 'token',
   adminTelegramIds: [],
+  displayTimezone: 'Asia/Almaty',
   port: 3000,
   pricing: {
     firstPeriodStars: 100,
@@ -22,21 +25,32 @@ const env: AppEnv = {
   },
 };
 
-const createTextCtx = (text: string): BotContext =>
+const accessStateProvider = (state?: UserAccessState): AccessStateProvider => ({
+  getUserAccessState: vi
+    .fn()
+    .mockResolvedValue(state ?? { kind: 'telegram_registered', telegramId: '1', trialUsed: false }),
+});
+
+const createTextCtx = (text: string, chatType = 'private'): BotContext =>
   ({
     message: { text },
+    chat: { id: 1, type: chatType },
     state: { user: { telegramId: '1', chatId: '1' } },
     reply: vi.fn().mockResolvedValue(undefined),
   }) as unknown as BotContext;
 
+const deps = (store = new InMemoryConversationStore(), state?: UserAccessState) => ({
+  env,
+  conversationStore: store,
+  couponService: new MockCouponService(),
+  accountService: new MockAccountService(),
+  accessStateProvider: accessStateProvider(state),
+});
+
 describe('handlers', () => {
   it('responds to unknown message with main menu', async () => {
     const ctx = createTextCtx('unknown');
-    await handleTextMessage(ctx, {
-      env,
-      conversationStore: new InMemoryConversationStore(),
-      couponService: new MockCouponService(),
-    });
+    await handleTextMessage(ctx, deps());
     expect(ctx.reply).toHaveBeenCalledWith(
       'Используйте кнопки меню, чтобы выбрать действие.',
       expect.objectContaining({ reply_markup: expect.any(Object) }),
@@ -47,18 +61,37 @@ describe('handlers', () => {
     const store = new InMemoryConversationStore();
     await store.set('1', createAwaitingCouponState());
     const ctx = createTextCtx('/start');
-    await handleStartCommand(ctx, store);
+    await handleStartCommand(ctx, store, accessStateProvider());
     await expect(store.get('1')).resolves.toBeUndefined();
   });
 
   it('enters awaiting_coupon from menu button', async () => {
     const store = new InMemoryConversationStore();
     const ctx = createTextCtx(MENU_BUTTONS.activateCoupon);
-    await handleTextMessage(ctx, {
-      env,
-      conversationStore: store,
-      couponService: new MockCouponService(),
-    });
+    await handleTextMessage(ctx, deps(store));
     await expect(store.get('1')).resolves.toMatchObject({ name: 'awaiting_coupon' });
+  });
+
+  it('shows active welcome without password', async () => {
+    const ctx = createTextCtx('/start');
+    await handleStartCommand(
+      ctx,
+      new InMemoryConversationStore(),
+      accessStateProvider({ kind: 'active', status: 'active', telegramId: '1', trialUsed: true }),
+    );
+    expect(ctx.reply).toHaveBeenCalledWith(
+      expect.stringContaining('Ваш доступ активен'),
+      expect.any(Object),
+    );
+    expect(ctx.reply).not.toHaveBeenCalledWith(
+      expect.stringContaining('пароль'),
+      expect.anything(),
+    );
+  });
+
+  it('blocks private data in groups', async () => {
+    const ctx = createTextCtx(MENU_BUTTONS.myAccess, 'group');
+    await handleTextMessage(ctx, deps());
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('личном чате'), undefined);
   });
 });

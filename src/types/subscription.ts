@@ -13,5 +13,8 @@ export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
 export interface Subscription {
   telegramId: string;
   status: SubscriptionStatus;
+  trialUsed?: boolean;
+  loginEmail?: string;
   expiresAt?: Date;
+  deleteAfter?: Date;
 }

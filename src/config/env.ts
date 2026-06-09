@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { PricingConfig } from './pricing.js';
+import { DEFAULT_DISPLAY_TIMEZONE, isValidIanaTimeZone } from '../utils/dates.js';
 
 export type NodeEnv = 'development' | 'test' | 'production';
 export type BotMode = 'polling' | 'webhook';
@@ -14,6 +15,7 @@ export interface AppEnv {
   appUrl?: string;
   adminTelegramIds: TelegramAdminId[];
   supportUsername?: string;
+  displayTimezone: string;
   webhookDomain?: string;
   webhookSecret?: string;
   port: number;
@@ -29,6 +31,7 @@ export interface SafeEnvLogData {
   hasAppUrl: boolean;
   adminTelegramIdsCount: number;
   hasSupportUsername: boolean;
+  displayTimezone: string;
   hasWebhookDomain: boolean;
   hasWebhookSecret: boolean;
   port: number;
@@ -87,6 +90,10 @@ const rawEnvSchema = z.object({
   APP_URL: optionalUrl,
   ADMIN_TELEGRAM_IDS: optionalText,
   SUPPORT_USERNAME: optionalText,
+  DISPLAY_TIMEZONE: z.preprocess(
+    trimWithDefault(DEFAULT_DISPLAY_TIMEZONE),
+    z.string().refine(isValidIanaTimeZone, 'must be a valid IANA timezone'),
+  ),
   WEBHOOK_DOMAIN: optionalText,
   WEBHOOK_SECRET: optionalText,
   PORT: positivePortFromEnv,
@@ -118,6 +125,7 @@ export const parseEnv = (source: NodeJS.ProcessEnv): AppEnv => {
     botMode: parsed.data.BOT_MODE,
     adminTelegramIds,
     port: parsed.data.PORT,
+    displayTimezone: parsed.data.DISPLAY_TIMEZONE,
     pricing: {
       firstPeriodStars: parsed.data.FIRST_PERIOD_STARS,
       renewalPeriodStars: parsed.data.RENEWAL_PERIOD_STARS,
@@ -168,6 +176,7 @@ export const toSafeEnvLogData = (env: AppEnv): SafeEnvLogData => ({
   hasAppUrl: Boolean(env.appUrl),
   adminTelegramIdsCount: env.adminTelegramIds.length,
   hasSupportUsername: Boolean(env.supportUsername),
+  displayTimezone: env.displayTimezone,
   hasWebhookDomain: Boolean(env.webhookDomain),
   hasWebhookSecret: Boolean(env.webhookSecret),
   port: env.port,
