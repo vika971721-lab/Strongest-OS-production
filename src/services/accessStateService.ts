@@ -43,6 +43,13 @@ export class DefaultAccessStateService implements AccessStateProvider {
     try {
       const record = await this.source.findAccessStateRecord(telegramId);
       if (!record) return { kind: 'unregistered', ...base(telegramId) };
+      if (!record.botUserExists && record.hasAuthAccount) {
+        return {
+          kind: 'broken_link',
+          reason: 'bot_user_missing',
+          ...base(telegramId, record),
+        };
+      }
       if (record.brokenLinkReason) {
         return {
           kind: 'broken_link',

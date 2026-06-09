@@ -26,7 +26,7 @@ export class InMemoryCallbackRateLimiter {
 
     const mapKey = `${key}:${action}`;
     const previous = this.hits.get(mapKey);
-    if (previous && nowMs - previous < this.windowMs) {
+    if (previous !== undefined && nowMs - previous < this.windowMs) {
       return { allowed: false, retryAfterMs: this.windowMs - (nowMs - previous) };
     }
 
