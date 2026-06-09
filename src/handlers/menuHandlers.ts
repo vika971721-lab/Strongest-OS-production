@@ -116,10 +116,7 @@ export const handlePasswordRecovery = async (
   ctx: BotContext,
   deps: UiDependencies,
 ): Promise<void> => {
-  if (!(await requirePrivateChat(ctx))) {
-    await ctx.reply(MESSAGES.passwordPrivateOnly);
-    return;
-  }
+  if (!(await requirePrivateChat(ctx, MESSAGES.passwordPrivateOnly))) return;
   const telegramId = telegramIdFromContext(ctx);
   if (!telegramId) return;
   logger.info({ telegramId }, 'password_recovery_opened');
