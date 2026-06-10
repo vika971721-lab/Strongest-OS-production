@@ -159,7 +159,7 @@ const inlineLabels = (markup: ReturnType<typeof createAccessKeyboard>) =>
 describe('stage 3 required scenario coverage', () => {
   it.each([
     ['new user', states.unregistered, 'Добро пожаловать'],
-    ['active user', states.active, 'Ваш доступ активен'],
+    ['active user', states.active, 'Доступ активен'],
     ['expired user', states.expired, 'Срок доступа закончился'],
     ['banned user', states.banned, 'Доступ к аккаунту ограничен'],
     ['marked for deletion', states.marked_for_deletion, 'ожидает удаления'],
@@ -189,7 +189,7 @@ describe('stage 3 required scenario coverage', () => {
     const ctx = createCtx('/status');
     await handleStatusCommand(ctx, deps(states.active));
     expect(replyMock(ctx)).toHaveBeenCalledWith(
-      expect.stringContaining('Ваш доступ активен'),
+      expect.stringContaining('Доступ активен'),
       expect.any(Object),
     );
   });
@@ -540,7 +540,7 @@ describe('stage 3 required scenario coverage', () => {
   it('development preview status is admin-only and production-disabled', async () => {
     const ctx = createCtx('/admin_preview_status active');
     await handleAdminPreviewStatusCommand(ctx, env);
-    expect(replyMock(ctx)).toHaveBeenCalledWith(expect.stringContaining('Ваш доступ активен'));
+    expect(replyMock(ctx)).toHaveBeenCalledWith(expect.stringContaining('Доступ активен'));
     const denied = {
       ...createCtx('/admin_preview_status active'),
       state: { user: { telegramId: '2' } },

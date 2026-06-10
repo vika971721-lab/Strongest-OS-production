@@ -27,7 +27,7 @@ export const MESSAGES = {
 export const buildWelcomeMessage = (state: UserAccessState): string => {
   switch (state.kind) {
     case 'active':
-      return 'С возвращением в Strongest OS.\n\nВаш доступ активен. Продолжайте двигаться к своим целям.';
+      return '⚡ С возвращением в Strongest OS.\n\nДоступ активен. Квесты ждут. Продолжай двигаться вперёд.';
     case 'expired':
       return 'С возвращением в Strongest OS.\n\nСрок доступа закончился, но ваши данные временно сохранены. Вы можете оформить новый период или активировать подарочный промокод.';
     case 'banned':
@@ -46,7 +46,7 @@ export const buildWelcomeMessage = (state: UserAccessState): string => {
     case 'telegram_registered':
     case 'account_pending':
     case 'cancelled':
-      return 'Добро пожаловать в Strongest OS.\n\nStrongest OS — это игровая система дисциплины, которая помогает превращать ежедневные задачи в квесты, видеть прогресс, повышать уровень и двигаться к своим целям.\n\nВыберите действие в меню ниже.';
+      return '🏆 Добро пожаловать в Strongest OS.\n\nStrongest OS — игровая система дисциплины. Квесты, цели, прогресс и XP в одном месте.\n\nПревращай задачи в действия. Выбери действие в меню.';
     default:
       return assertNever(state);
   }
@@ -68,7 +68,7 @@ export const buildAccessMessage = (
     case 'account_pending':
       return `Аккаунт Strongest OS создан, но активного доступа пока нет.\n\nЛогин:\n${safeEmail(state.loginEmail)}\n\nОформите доступ или активируйте подарочный промокод.`;
     case 'active':
-      return `Ваш доступ активен.\n\nДействует до:\n${formatDateTime(state.expiresAt, timeZone)}\n\nОсталось:\n${formatRemainingTime(state.expiresAt, nowMs)}\n\nЛогин:\n${safeEmail(state.loginEmail)}`;
+      return `✅ Доступ активен.\n\n📅 Действует до:\n${formatDateTime(state.expiresAt, timeZone)}\n\n⏳ Осталось:\n${formatRemainingTime(state.expiresAt, nowMs)}\n\n🔐 Логин:\n${safeEmail(state.loginEmail)}`;
     case 'expired': {
       const deletion = state.deleteAfter
         ? `До удаления данных осталось:\n${formatDeletionRemainingTime(state.deleteAfter, nowMs)}`
@@ -156,11 +156,7 @@ export const buildCouponSuccessMessage = (
   expiresAt: Date | undefined,
   timeZone: string,
 ): string =>
-  `Промокод активирован.
-
-Добавлено: ${days} дней
-
-Доступ активен до: ${formatDateTime(expiresAt?.toISOString(), timeZone)}`;
+  `🎟 Промокод активирован.\n\n⚡ Добавлено: <b>${days} дней</b>\n\n📅 Доступ активен до: ${formatDateTime(expiresAt?.toISOString(), timeZone)}`;
 
 export const buildCouponNewAccountSuccessMessage = (input: {
   days: number;
@@ -170,24 +166,7 @@ export const buildCouponNewAccountSuccessMessage = (input: {
   loginEmail: string;
   password: string;
 }): string =>
-  `Промокод активирован.
-
-Ваш аккаунт Strongest OS создан.
-
-Добавлено: ${input.days} дней
-
-Доступ активен до: ${formatDateTime(input.expiresAt?.toISOString(), input.timeZone)}
-
-Ссылка:
-${escapeTelegramHtml(input.appUrl)}
-
-Логин:
-${escapeTelegramHtml(input.loginEmail)}
-
-Пароль:
-${escapeTelegramHtml(input.password)}
-
-Сохраните данные. Бот не хранит пароль и не сможет показать его повторно.`;
+  `🎟 Промокод активирован.\n\n🚀 Доступ к Strongest OS открыт.\n\nДобавлено: ${input.days} дней\n\n📅 Доступ активен до: ${formatDateTime(input.expiresAt?.toISOString(), input.timeZone)}\n\n🌐 Ссылка:\n${escapeTelegramHtml(input.appUrl)}\n\n🔐 Логин:\n${escapeTelegramHtml(input.loginEmail)}\n\n🔑 Пароль:\n${escapeTelegramHtml(input.password)}\n\n<b>Сохрани данные.</b> Бот показывает пароль только один раз.`;
 
 export const buildCouponAlreadyRedeemedByUserMessage = (
   expiresAt: Date | undefined,
@@ -209,20 +188,20 @@ export const buildPasswordRecoveryMessage = (state: UserAccessState): string => 
     case 'temporarily_unavailable':
       return 'Не удалось корректно определить состояние аккаунта.\n\nОбратитесь в поддержку.';
     case 'banned':
-      return `Ваш логин:\n${safeEmail(state.loginEmail)}\n\nВы можете создать новый пароль, но доступ к Strongest OS останется ограничен до снятия блокировки.\n\nПосле создания нового пароля старый пароль перестанет работать.\n\nСоздать новый пароль?`;
+      return `🔐 Логин:\n${safeEmail(state.loginEmail)}\n\nВы можете создать новый пароль, но доступ к Strongest OS останется ограничен до снятия блокировки.\n\nПосле создания нового пароля старый перестанет работать. Бот покажет пароль один раз.\n\nСоздать новый пароль?`;
     case 'account_pending':
     case 'active':
     case 'expired':
     case 'cancelled':
     case 'marked_for_deletion':
-      return `Ваш логин:\n${safeEmail(state.loginEmail)}\n\nПосле создания нового пароля старый пароль перестанет работать.\n\nСоздать новый пароль?`;
+      return `🔐 Логин:\n${safeEmail(state.loginEmail)}\n\nПосле создания нового пароля старый перестанет работать. Бот покажет пароль один раз.\n\nСоздать новый пароль?`;
     default:
       return assertNever(state);
   }
 };
 
 export const buildPasswordCreatedMessage = (loginEmail: string, password: string): string =>
-  `Новый пароль создан.\n\nЛогин:\n${safeEmail(loginEmail)}\n\nНовый пароль:\n${escapeTelegramHtml(password)}\n\nСтарый пароль больше не действует.\n\nСохраните новый пароль. Бот не хранит его и не сможет показать повторно.`;
+  `🔑 Новый пароль создан.\n\n🔐 Логин:\n${safeEmail(loginEmail)}\n\n🔑 Новый пароль:\n${escapeTelegramHtml(password)}\n\nСтарый пароль больше не работает.\n\n<b>Сохрани новый пароль.</b> Бот показывает его только один раз.`;
 
 export const buildFeaturesMessage = (): string =>
   'Что входит в Strongest OS\n\nКвесты и главный квест дня\nПланируйте действия и выделяйте одну главную задачу, которая сильнее всего двигает вас вперёд.\n\nXP, уровни и ранги\nПолучайте визуальное подтверждение прогресса и наблюдайте, как развивается ваш игровой профиль.\n\nWSTшки и кейсы\nЗарабатывайте внутреннюю валюту за выполненные действия и открывайте игровые награды.\n\nДенежные цели\nФиксируйте финансовую цель, срок и фактический прогресс.\n\nШаблоны квестов\nИспользуйте готовые задачи для продаж, тренировок, обучения, здоровья и других направлений.\n\nКалендарь и разбор дня\nСмотрите историю действий, замечайте сильные и слабые дни и сохраняйте важные выводы.\n\nPWA-приложение\nДобавьте Strongest OS на главный экран телефона и используйте его как обычное приложение.';

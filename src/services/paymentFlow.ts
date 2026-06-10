@@ -40,7 +40,10 @@ export interface PlanConfig {
 
 export interface PaymentAccessGateway {
   getAccessState(telegramId: string): Promise<UserAccessState>;
-  createOrGetAccount(telegramId: string): Promise<{
+  createOrGetAccount(
+    telegramId: string,
+    userInfo?: { username?: string; firstName?: string; lastName?: string },
+  ): Promise<{
     supabaseUserId: string;
     loginEmail: string;
     created: boolean;
@@ -69,7 +72,10 @@ export class NotConfiguredPaymentAccessGateway implements PaymentAccessGateway {
     return { kind: 'telegram_registered', telegramId, trialUsed: false };
   }
 
-  async createOrGetAccount(telegramId: string): Promise<{
+  async createOrGetAccount(
+    telegramId: string,
+    _userInfo?: { username?: string; firstName?: string; lastName?: string },
+  ): Promise<{
     supabaseUserId: string;
     loginEmail: string;
     created: boolean;
@@ -276,6 +282,7 @@ export const processPaymentEvent = async (input: {
   eventRepository: PaymentEventRepository;
   orderRepository: PaymentOrderRepository;
   accessGateway: PaymentAccessGateway;
+  userInfo?: { username?: string; firstName?: string; lastName?: string };
   now?: Date;
 }): Promise<{
   status: 'processed' | 'duplicate' | 'manual_review';
@@ -338,7 +345,10 @@ export const processPaymentEvent = async (input: {
     };
     await input.eventRepository.createEventIfAbsent(audit);
   }
-  const account = await input.accessGateway.createOrGetAccount(input.order.telegramId);
+  const account = await input.accessGateway.createOrGetAccount(
+    input.order.telegramId,
+    input.userInfo,
+  );
   if (account.created) logger.info({ telegramId: input.order.telegramId }, 'account_created');
   await input.orderRepository.attachSupabaseUser(input.order.orderId, account.supabaseUserId);
   const extended = await input.accessGateway.extendSubscription({
@@ -394,18 +404,20 @@ const successfulPaymentMessage = (input: {
     ? formatDateTime(input.result.expiresAt, input.timezone)
     : 'уточняется';
   if (input.result.status === 'manual_review') {
-    return 'Оплата получена, но доступ требует ручной проверки. Напишите в поддержку и не оплачивайте повторно.';
+    return '⚠️ Оплата получена, но доступ требует ручной проверки.\n\nНапишите в поддержку и не оплачивайте повторно.';
   }
   if (input.result.status === 'duplicate') {
-    return `Оплата уже была обработана.\n\nАктуальная дата окончания доступа:\n${expires}`;
+    return `✅ Эта оплата уже была обработана.\n\nТекущий доступ активен до:\n${expires}`;
   }
   if (input.result.accountCreated && input.result.password) {
-    return `Оплата получена.\n\nВаш доступ к Strongest OS активирован до:\n${expires}\n\nСсылка:\n${input.appUrl ? escapeTelegramHtml(input.appUrl) : 'адрес приложения временно не настроен'}\n\nЛогин:\n${input.result.loginEmail ? escapeTelegramHtml(input.result.loginEmail) : 'уточняется'}\n\nПароль:\n${escapeTelegramHtml(input.result.password)}\n\nСохраните данные. Бот не хранит пароль и не сможет показать его повторно.\n\nЕсли вы потеряете пароль, создайте новый через раздел “Восстановить доступ”.`;
+    const appLine = input.appUrl ? `\n🌐 Ссылка:\n${escapeTelegramHtml(input.appUrl)}\n` : '';
+    return `🚀 Доступ активирован.\n\nStrongest OS запущена. Теперь у тебя есть система: квесты, цели, прогресс и дисциплина в одном месте.\n\nЗаходи, собирай день и прокачивай себя без хаоса.\n${appLine}\n🔐 Логин:\n${input.result.loginEmail ? escapeTelegramHtml(input.result.loginEmail) : 'уточняется'}\n\n🔑 Пароль:\n${escapeTelegramHtml(input.result.password)}\n\n📅 Доступ активен до:\n${expires}\n\n<b>Сохрани пароль.</b> Бот показывает его только один раз.\n\nЕсли потеряешь — создай новый через «Восстановить доступ».`;
   }
   if (input.order.plan === 'monthly_renewal') {
-    return `Оплата получена.\n\nК вашему доступу добавлено:\n${input.order.periodDays} дней\n\nНовая дата окончания:\n${expires}\n\nОставшиеся дни сохранены.`;
+    return `⚡ Доступ продлён.\n\nДобавлено: <b>${input.order.periodDays} дней</b>\n\nНовая дата окончания:\n${expires}\n\nОставшиеся дни сохранены. Продолжай двигаться вперёд. 💪`;
   }
-  return `Оплата получена.\n\nДоступ активирован до:\n${expires}\n\nЛогин:\n${input.result.loginEmail ? escapeTelegramHtml(input.result.loginEmail) : 'уточняется'}\n\nИспользуйте сохранённый пароль. Если вы его потеряли, создайте новый через раздел “Восстановить доступ”.`;
+  const appLine = input.appUrl ? `\n🌐 Ссылка:\n${escapeTelegramHtml(input.appUrl)}\n` : '';
+  return `🚀 Доступ активирован.\n${appLine}\n🔐 Логин:\n${input.result.loginEmail ? escapeTelegramHtml(input.result.loginEmail) : 'уточняется'}\n\n📅 Доступ активен до:\n${expires}\n\nЕсли потерял пароль — создай новый через «Восстановить доступ».`;
 };
 
 export const createPaymentResultKeyboard = (appUrl?: string) => {
@@ -540,6 +552,17 @@ export const handleSuccessfulPayment = async (input: {
   const telegramId = input.ctx.state.user?.telegramId;
   const message = getSuccessfulPaymentMessage(input.ctx);
   if (!telegramId || !message) return;
+  const userInfo = {
+    ...(input.ctx.state.user?.username !== undefined
+      ? { username: input.ctx.state.user.username }
+      : {}),
+    ...(input.ctx.state.user?.firstName !== undefined
+      ? { firstName: input.ctx.state.user.firstName }
+      : {}),
+    ...(input.ctx.state.user?.lastName !== undefined
+      ? { lastName: input.ctx.state.user.lastName }
+      : {}),
+  };
   const payment = message.successful_payment;
   logger.info({ telegramId }, 'successful_payment_received');
   const order = await input.orderRepository.findByInvoicePayload(payment.invoice_payload);
@@ -573,6 +596,7 @@ export const handleSuccessfulPayment = async (input: {
     eventRepository: input.eventRepository,
     orderRepository: input.orderRepository,
     accessGateway: input.accessGateway,
+    userInfo,
   });
   try {
     await input.ctx.reply(

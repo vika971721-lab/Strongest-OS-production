@@ -5,7 +5,11 @@ import { buildWebhookUrl, maskWebhookUrl, type AppEnv } from './config/env.js';
 import { createHttpServer, closeHttpServer, type RuntimeState } from './httpServer.js';
 import { getSupabaseAdminClient } from './integrations/supabaseAdmin.js';
 import { SupabaseNotificationRepository } from './repositories/notificationRepository.js';
+import { SupabasePaymentEventRepository } from './repositories/supabasePaymentEventRepository.js';
+import { SupabasePaymentOrderRepository } from './repositories/supabasePaymentOrderRepository.js';
 import { SupabaseSubscriptionRepository } from './repositories/subscriptionRepository.js';
+import { SupabaseAccountService } from './services/supabaseAccountService.js';
+import { SupabasePaymentAccessGateway } from './services/supabasePaymentAccessGateway.js';
 import {
   SchedulerRunner,
   SupabaseSchedulerLockGateway,
@@ -45,6 +49,15 @@ export const createApplication = (env: AppEnv): Application => {
         return { client: supabaseClient, subscriptions, notificationsRepository };
       })()
     : undefined;
+  const paymentDependencies = supabaseClient
+    ? {
+        paymentOrderRepository: new SupabasePaymentOrderRepository(supabaseClient),
+        paymentEventRepository: new SupabasePaymentEventRepository(supabaseClient),
+        accountService: new SupabaseAccountService(supabaseClient),
+        paymentAccessGateway: new SupabasePaymentAccessGateway(supabaseClient),
+      }
+    : {};
+
   const botRef: { current?: Telegraf<BotContext> } = {};
   const scheduler = schedulerDependencies
     ? (() => {
@@ -91,26 +104,20 @@ export const createApplication = (env: AppEnv): Application => {
     scheduler,
   };
 
-  const bot = createBot(
-    env,
-    schedulerDependencies
+  const bot = createBot(env, {
+    ...paymentDependencies,
+    scheduler,
+    ...(schedulerDependencies
       ? {
-          scheduler,
           subscriptionLifecycleRepository: schedulerDependencies.subscriptions,
           notificationRepository: schedulerDependencies.notificationsRepository,
-          systemStatus: {
-            isReady: () => state.ready && !state.shuttingDown,
-            supabaseClient: supabaseClient ?? undefined,
-          },
         }
-      : {
-          scheduler,
-          systemStatus: {
-            isReady: () => state.ready && !state.shuttingDown,
-            supabaseClient: supabaseClient ?? undefined,
-          },
-        },
-  );
+      : {}),
+    systemStatus: {
+      isReady: () => state.ready && !state.shuttingDown,
+      supabaseClient: supabaseClient ?? undefined,
+    },
+  });
   botRef.current = bot;
   state.compositionReady = true;
 
