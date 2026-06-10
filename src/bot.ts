@@ -76,6 +76,12 @@ import {
   type NotificationRepository,
 } from './repositories/notificationRepository.js';
 import { SupabaseSubscriptionRepository } from './repositories/subscriptionRepository.js';
+import {
+  handleAdminHealthCheckCommand,
+  handleAdminSystemStatusCommand,
+  handleAdminWebhookStatusCommand,
+  type SystemStatusDependencies,
+} from './commands/productionAdminCommands.js';
 
 export interface BotDependencies {
   conversationStore?: InMemoryConversationStore;
@@ -91,6 +97,10 @@ export interface BotDependencies {
   scheduler?: Scheduler;
   subscriptionLifecycleRepository?: SubscriptionLifecycleRepository;
   notificationRepository?: NotificationRepository;
+  systemStatus?: Omit<
+    SystemStatusDependencies,
+    'bot' | 'env' | 'scheduler' | 'paymentOrderRepository' | 'couponRepository'
+  >;
 }
 
 export const createBot = (
@@ -176,6 +186,25 @@ export const createBot = (
   bot.command('admin_run_scheduler', async (ctx) =>
     handleAdminRunSchedulerCommand(ctx, env, scheduler),
   );
+  const systemStatusDependencies: SystemStatusDependencies = {
+    bot,
+    env,
+    scheduler,
+    paymentOrderRepository,
+    couponRepository,
+    ...dependencies.systemStatus,
+  };
+
+  bot.command('admin_webhook_status', async (ctx) =>
+    handleAdminWebhookStatusCommand(ctx, systemStatusDependencies),
+  );
+  bot.command('admin_system_status', async (ctx) =>
+    handleAdminSystemStatusCommand(ctx, systemStatusDependencies),
+  );
+  bot.command('admin_health_check', async (ctx) =>
+    handleAdminHealthCheckCommand(ctx, systemStatusDependencies),
+  );
+
   bot.command('admin_subscription_lifecycle', async (ctx) => {
     if (!subscriptionLifecycleRepository || !notificationRepository) {
       await ctx.reply('Lifecycle repositories are not configured.');

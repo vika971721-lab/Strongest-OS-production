@@ -5,6 +5,7 @@ import { DEFAULT_DISPLAY_TIMEZONE, isValidIanaTimeZone } from '../utils/dates.js
 export type NodeEnv = 'development' | 'test' | 'production';
 export type BotMode = 'polling' | 'webhook';
 export type TelegramAdminId = string;
+export type LogLevel = 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
 
 export interface AppEnv {
   nodeEnv: NodeEnv;
@@ -16,9 +17,16 @@ export interface AppEnv {
   adminTelegramIds: TelegramAdminId[];
   supportUsername?: string;
   displayTimezone: string;
-  webhookDomain?: string;
-  webhookSecret?: string;
+  host?: string;
   port: number;
+  webhookDomain?: string;
+  webhookPath?: string;
+  webhookSecret?: string;
+  webhookAutoSetup?: boolean;
+  trustProxy?: boolean;
+  healthCheckSupabase?: boolean;
+  logLevel?: LogLevel;
+  shutdownTimeoutSeconds?: number;
   pricing: PricingConfig;
   paymentOrderTtlMinutes?: number;
   schedulerEnabled?: boolean;
@@ -39,9 +47,16 @@ export interface SafeEnvLogData {
   adminTelegramIdsCount: number;
   hasSupportUsername: boolean;
   displayTimezone: string;
-  hasWebhookDomain: boolean;
-  hasWebhookSecret: boolean;
+  host: string;
   port: number;
+  hasWebhookDomain: boolean;
+  webhookPath: string;
+  hasWebhookSecret: boolean;
+  webhookAutoSetup: boolean;
+  trustProxy: boolean;
+  healthCheckSupabase: boolean;
+  logLevel: LogLevel;
+  shutdownTimeoutSeconds: number;
   pricing: PricingConfig;
   paymentOrderTtlMinutes?: number;
   schedulerEnabled: boolean;
@@ -51,6 +66,8 @@ export interface SafeEnvLogData {
   deletionWarningHours: number;
   schedulerDryRun: boolean;
 }
+
+const WEBHOOK_SECRET_MIN_LENGTH = 16;
 
 const trimOptional = (value: unknown): string | undefined => {
   if (typeof value !== 'string') return undefined;
@@ -84,7 +101,15 @@ const booleanFromEnv = (fallback: string) =>
 
 const positivePortFromEnv = z.preprocess(
   trimWithDefault('3000'),
-  z.coerce.number().int().positive('PORT must be a positive integer'),
+  z.coerce.number().int().positive('must be a positive integer').max(65_535, 'must be <= 65535'),
+);
+
+const webhookPathFromEnv = z.preprocess(
+  trimWithDefault('/telegram/webhook'),
+  z
+    .string()
+    .refine((value) => value.startsWith('/'), 'must start with /')
+    .refine((value) => !value.includes('?'), 'must not include query string'),
 );
 
 export const parseAdminTelegramIds = (raw: string | undefined): TelegramAdminId[] => {
@@ -116,9 +141,19 @@ const rawEnvSchema = z.object({
     trimWithDefault(DEFAULT_DISPLAY_TIMEZONE),
     z.string().refine(isValidIanaTimeZone, 'must be a valid IANA timezone'),
   ),
-  WEBHOOK_DOMAIN: optionalText,
-  WEBHOOK_SECRET: optionalText,
+  HOST: z.preprocess(trimWithDefault('0.0.0.0'), z.string().min(1)),
   PORT: positivePortFromEnv,
+  WEBHOOK_DOMAIN: optionalText,
+  WEBHOOK_PATH: webhookPathFromEnv,
+  WEBHOOK_SECRET: optionalText,
+  WEBHOOK_AUTO_SETUP: booleanFromEnv('true'),
+  TRUST_PROXY: booleanFromEnv('false'),
+  HEALTH_CHECK_SUPABASE: booleanFromEnv('true'),
+  LOG_LEVEL: z.preprocess(
+    trimWithDefault('info'),
+    z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']),
+  ),
+  SHUTDOWN_TIMEOUT_SECONDS: positiveIntegerFromEnv('15', 300),
   FIRST_PERIOD_STARS: positiveIntegerFromEnv('100'),
   RENEWAL_PERIOD_STARS: positiveIntegerFromEnv('150'),
   FIRST_PERIOD_DAYS: positiveIntegerFromEnv('30'),
@@ -132,12 +167,12 @@ const rawEnvSchema = z.object({
   SCHEDULER_DRY_RUN: booleanFromEnv('false'),
 });
 
+const issueToEnvName = (issue: z.ZodIssue): string => issue.path.join('.') || issue.message;
+
 export const parseEnv = (source: NodeJS.ProcessEnv): AppEnv => {
   const parsed = rawEnvSchema.safeParse(source);
   if (!parsed.success) {
-    const details = parsed.error.issues
-      .map((issue) => issue.path.join('.') || issue.message)
-      .join(', ');
+    const details = [...new Set(parsed.error.issues.map(issueToEnvName))].join(', ');
     throw new Error(`Invalid configuration: ${details}`);
   }
 
@@ -145,16 +180,22 @@ export const parseEnv = (source: NodeJS.ProcessEnv): AppEnv => {
   try {
     adminTelegramIds = parseAdminTelegramIds(parsed.data.ADMIN_TELEGRAM_IDS);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Invalid ADMIN_TELEGRAM_IDS';
-    throw new Error(`Invalid configuration: ${message}`, { cause: error });
+    throw new Error('Invalid configuration: ADMIN_TELEGRAM_IDS', { cause: error });
   }
 
   const env: AppEnv = {
     nodeEnv: parsed.data.NODE_ENV,
     botMode: parsed.data.BOT_MODE,
     adminTelegramIds,
-    port: parsed.data.PORT,
     displayTimezone: parsed.data.DISPLAY_TIMEZONE,
+    host: parsed.data.HOST,
+    port: parsed.data.PORT,
+    webhookPath: parsed.data.WEBHOOK_PATH,
+    webhookAutoSetup: parsed.data.WEBHOOK_AUTO_SETUP,
+    trustProxy: parsed.data.TRUST_PROXY,
+    healthCheckSupabase: parsed.data.HEALTH_CHECK_SUPABASE,
+    logLevel: parsed.data.LOG_LEVEL,
+    shutdownTimeoutSeconds: parsed.data.SHUTDOWN_TIMEOUT_SECONDS,
     pricing: {
       firstPeriodStars: parsed.data.FIRST_PERIOD_STARS,
       renewalPeriodStars: parsed.data.RENEWAL_PERIOD_STARS,
@@ -177,12 +218,15 @@ export const parseEnv = (source: NodeJS.ProcessEnv): AppEnv => {
   }
   if (parsed.data.APP_URL) env.appUrl = parsed.data.APP_URL;
   if (parsed.data.SUPPORT_USERNAME) env.supportUsername = parsed.data.SUPPORT_USERNAME;
-  if (parsed.data.WEBHOOK_DOMAIN) env.webhookDomain = parsed.data.WEBHOOK_DOMAIN;
+  if (parsed.data.WEBHOOK_DOMAIN)
+    env.webhookDomain = normalizeWebhookDomain(parsed.data.WEBHOOK_DOMAIN);
   if (parsed.data.WEBHOOK_SECRET) env.webhookSecret = parsed.data.WEBHOOK_SECRET;
 
   validateRequiredEnv(env);
   return env;
 };
+
+const normalizeWebhookDomain = (domain: string): string => domain.replace(/\/+$/, '');
 
 const validateRequiredEnv = (env: AppEnv): void => {
   const missing: string[] = [];
@@ -192,6 +236,7 @@ const validateRequiredEnv = (env: AppEnv): void => {
     if (!env.supabaseUrl) missing.push('SUPABASE_URL');
     if (!env.supabaseServiceRoleKey) missing.push('SUPABASE_SERVICE_ROLE_KEY');
     if (!env.appUrl) missing.push('APP_URL');
+    if (env.adminTelegramIds.length === 0) missing.push('ADMIN_TELEGRAM_IDS');
     if (env.botMode === 'webhook') {
       if (!env.webhookDomain) missing.push('WEBHOOK_DOMAIN');
       if (!env.webhookSecret) missing.push('WEBHOOK_SECRET');
@@ -201,6 +246,41 @@ const validateRequiredEnv = (env: AppEnv): void => {
   if (missing.length > 0) {
     throw new Error(`Missing required configuration: ${missing.join(', ')}`);
   }
+
+  if (env.botMode === 'webhook') {
+    validateWebhookConfig(env);
+  }
+};
+
+const validateWebhookConfig = (env: AppEnv): void => {
+  if (env.webhookDomain) {
+    let url: URL;
+    try {
+      url = new URL(env.webhookDomain);
+    } catch {
+      throw new Error('Invalid configuration: WEBHOOK_DOMAIN');
+    }
+    if (url.protocol !== 'https:' && env.nodeEnv === 'production') {
+      throw new Error('Invalid configuration: WEBHOOK_DOMAIN');
+    }
+    if (url.search || url.hash) throw new Error('Invalid configuration: WEBHOOK_DOMAIN');
+  }
+  if (env.webhookSecret !== undefined && env.webhookSecret.length < WEBHOOK_SECRET_MIN_LENGTH) {
+    throw new Error('Invalid configuration: WEBHOOK_SECRET');
+  }
+};
+
+export const buildWebhookUrl = (env: Pick<AppEnv, 'webhookDomain' | 'webhookPath'>): string => {
+  if (!env.webhookDomain) throw new Error('Missing required configuration: WEBHOOK_DOMAIN');
+  const domain = env.webhookDomain.replace(/\/+$/, '');
+  const webhookPath = env.webhookPath ?? '/telegram/webhook';
+  const path = webhookPath.startsWith('/') ? webhookPath : `/${webhookPath}`;
+  return `${domain}${path}`;
+};
+
+export const maskWebhookUrl = (url: string): string => {
+  const parsed = new URL(url);
+  return `${parsed.origin}/***`;
 };
 
 export const toSafeEnvLogData = (env: AppEnv): SafeEnvLogData => ({
@@ -213,9 +293,19 @@ export const toSafeEnvLogData = (env: AppEnv): SafeEnvLogData => ({
   adminTelegramIdsCount: env.adminTelegramIds.length,
   hasSupportUsername: Boolean(env.supportUsername),
   displayTimezone: env.displayTimezone,
-  hasWebhookDomain: Boolean(env.webhookDomain),
-  hasWebhookSecret: Boolean(env.webhookSecret),
+  host: env.host ?? '0.0.0.0',
   port: env.port,
+  hasWebhookDomain: Boolean(env.webhookDomain),
+  webhookPath:
+    (env.webhookPath ?? '/telegram/webhook') === '/telegram/webhook'
+      ? (env.webhookPath ?? '/telegram/webhook')
+      : '/***',
+  hasWebhookSecret: Boolean(env.webhookSecret),
+  webhookAutoSetup: env.webhookAutoSetup ?? true,
+  trustProxy: env.trustProxy ?? false,
+  healthCheckSupabase: env.healthCheckSupabase ?? true,
+  logLevel: env.logLevel ?? 'info',
+  shutdownTimeoutSeconds: env.shutdownTimeoutSeconds ?? 15,
   pricing: env.pricing,
   paymentOrderTtlMinutes: env.paymentOrderTtlMinutes ?? 15,
   schedulerEnabled: env.schedulerEnabled ?? true,

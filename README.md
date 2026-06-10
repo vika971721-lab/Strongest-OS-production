@@ -494,3 +494,148 @@ migrations/20260610_subscription_lifecycle_scheduler.sql
 ### Что остаётся для production deployment
 
 Этап 6 не добавляет production webhook, Docker, GitHub Actions и deployment. Для следующего этапа остаётся deployment hardening: webhook/health endpoints, container/runtime configuration, CI/CD, observability и operational runbooks для Supabase migrations и cleanup verification.
+
+## Production deployment guide (stage 7)
+
+### Обязательные переменные окружения
+
+Для production webhook-запуска задайте переменные в secret storage платформы, а не в Git:
+
+- `NODE_ENV=production`
+- `BOT_MODE=webhook`
+- `BOT_TOKEN`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `APP_URL`
+- `ADMIN_TELEGRAM_IDS`
+- `WEBHOOK_DOMAIN` — публичный HTTPS origin для Telegram webhook.
+- `WEBHOOK_PATH` — путь endpoint, по умолчанию `/telegram/webhook`.
+- `WEBHOOK_SECRET` — secret token Telegram webhook header.
+- `PORT`
+- `HOST=0.0.0.0`
+- `WEBHOOK_AUTO_SETUP=true`
+- `TRUST_PROXY=false` по умолчанию; включайте только за доверенным proxy.
+- `HEALTH_CHECK_SUPABASE=true`
+- `LOG_LEVEL=info`
+- `SHUTDOWN_TIMEOUT_SECONDS=15`
+
+Существующие переменные платежей, Supabase, купонов и scheduler остаются теми же: `FIRST_PERIOD_STARS`, `RENEWAL_PERIOD_STARS`, `FIRST_PERIOD_DAYS`, `RENEWAL_PERIOD_DAYS`, `PAYMENT_ORDER_TTL_MINUTES`, `SCHEDULER_ENABLED`, `SCHEDULER_INTERVAL_SECONDS`, `SCHEDULER_BATCH_SIZE`, `SUBSCRIPTION_RETENTION_DAYS`, `DELETION_WARNING_HOURS`, `SCHEDULER_DRY_RUN`.
+
+### Polling и webhook режимы
+
+Local development использует polling:
+
+```bash
+BOT_MODE=polling npm run dev
+```
+
+Production использует webhook и тот же composition root/handlers/services:
+
+```bash
+NODE_ENV=production BOT_MODE=webhook npm run start:webhook
+```
+
+Нельзя запускать polling и webhook одновременно для одного bot token. Если polling нужен как временный fallback, убедитесь, что работает только один экземпляр.
+
+### HTTP endpoints
+
+- `GET /health` возвращает только liveness: `{"status":"ok","service":"strongest-os-bot"}`.
+- `GET /ready` возвращает `200 {"status":"ready"}` после валидного env, созданного composition root, Telegram `getMe`, HTTP server и scheduler init. При shutdown или ошибке Supabase readiness возвращает `503` с safe reason.
+- `POST <WEBHOOK_PATH>` принимает Telegram updates только с `x-telegram-bot-api-secret-token`, ограничивает JSON body и не логирует полный update/body.
+
+### Docker build и запуск container
+
+```bash
+docker build -t strongest-os-bot:latest .
+docker run --rm --env-file .env -p 3000:3000 strongest-os-bot:latest
+```
+
+Docker image multi-stage: `npm ci`, TypeScript build, production runtime на Node.js 22, non-root user, запуск `node dist/index.js`, `.env`, `.git`, `node_modules`, `dist`, `coverage` и tests не копируются в runtime image.
+
+### Настройка и проверка webhook
+
+Startup сам вызывает `setWebhook`, если `BOT_MODE=webhook` и `WEBHOOK_AUTO_SETUP=true`. Разрешённые update types включают `message`, `callback_query`, `pre_checkout_query`.
+
+Ручные безопасные команды:
+
+```bash
+npm run webhook:set
+npm run webhook:info
+npm run webhook:delete
+```
+
+Скрипты используют текущий env, не печатают bot token и webhook secret, а URL показывают masked.
+
+### Scheduler
+
+Scheduler запускается после успешной инициализации bot/HTTP startup и только при `SCHEDULER_ENABLED=true`. Он использует существующий database lock из миграций предыдущих этапов. Для безопасной проверки cleanup включите:
+
+```bash
+SCHEDULER_DRY_RUN=true
+```
+
+При shutdown scheduler прекращает новые cycles, а webhook не удаляется автоматически.
+
+### Supabase migrations
+
+Перед production deployment примените forward-only migrations из `migrations/` в порядке дат:
+
+1. payment idempotency/constraints;
+2. coupon redemption RPC;
+3. subscription lifecycle scheduler lock, notification uniqueness, cleanup RPC and indexes.
+
+Не выполняйте destructive down migrations в production и не откатывайте payment history.
+
+### Проверки после deployment
+
+```bash
+curl -fsS https://<public-domain>/health
+curl -fsS https://<public-domain>/ready
+npm run webhook:info
+```
+
+Проверьте Telegram Stars на тестовом сценарии, выдачу и погашение gift coupon, lifecycle notifications, scheduler dry-run preview/status, а safe account deletion проверяйте только на тестовом аккаунте.
+
+### Logs и graceful shutdown
+
+Pino пишет structured JSON logs. Redaction покрывает token/service-role/webhook-secret/password/authorization headers. События startup/shutdown/readiness/webhook/scheduler логируются безопасными codes и без payload secrets.
+
+`SIGINT` и `SIGTERM` переводят readiness в `503`, останавливают scheduler/polling, закрывают HTTP server и завершаются в пределах `SHUTDOWN_TIMEOUT_SECONDS`. Обычный shutdown не вызывает `deleteWebhook`.
+
+### Admin-команды production status
+
+Доступны только Telegram IDs из `ADMIN_TELEGRAM_IDS`:
+
+- `/admin_webhook_status` — masked URL, pending updates, safe last error, allowed updates.
+- `/admin_system_status` — environment, bot mode, uptime, readiness, webhook, scheduler flags, Supabase reachability, version/commit.
+- `/admin_health_check` — read-only Telegram `getMe`, Supabase read, scheduler state, payment/coupon repository wiring.
+
+### GitHub Actions CI
+
+`.github/workflows/ci.yml` запускается на `push` и `pull_request`: checkout, setup Node 22, `npm ci`, format, lint, typecheck, tests, build. CI использует только dummy test env, не подключается к production Supabase, не ставит webhook и не запускает реальные destructive операции.
+
+### Rollback
+
+Безопасный rollback:
+
+1. Верните предыдущий Docker image или commit.
+2. Не откатывайте и не удаляйте `payment_events`, payment orders или coupon/payment history.
+3. Не запускайте automatic down migrations.
+4. При проблеме scheduler установите `SCHEDULER_ENABLED=false`.
+5. При проблеме cleanup установите `SCHEDULER_DRY_RUN=true`.
+6. При проблеме webhook выполните `npm run webhook:info` и проверьте masked status.
+7. Временно используйте polling только в одном экземпляре, если webhook недоступен.
+8. После исправления снова включите webhook и проверьте `/ready`.
+
+### Manual production checklist
+
+- [ ] Secrets заданы только в secret storage платформы.
+- [ ] `.env` не закоммичен и не копируется в image.
+- [ ] `WEBHOOK_DOMAIN` использует HTTPS.
+- [ ] `WEBHOOK_SECRET` достаточно длинный и не совпадает с path.
+- [ ] Migrations применены forward-only.
+- [ ] `npm run webhook:info` показывает ожидаемый masked URL.
+- [ ] `/health` и `/ready` возвращают 200 после startup.
+- [ ] Scheduler status проверен, cleanup сначала проверен с dry-run.
+- [ ] Telegram Stars, coupons, notifications и safe deletion проверены на тестовых данных.
+- [ ] Rollback image/commit известен.

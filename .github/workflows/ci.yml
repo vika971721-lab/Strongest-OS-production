@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NODE_ENV: test
+      BOT_MODE: polling
+      BOT_TOKEN: test-token
+      SUPABASE_URL: https://example.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
+      APP_URL: https://example.com
+      ADMIN_TELEGRAM_IDS: '1'
+      WEBHOOK_DOMAIN: https://bot.example.com
+      WEBHOOK_SECRET: test-webhook-secret-value
+      WEBHOOK_AUTO_SETUP: 'false'
+      HEALTH_CHECK_SUPABASE: 'false'
+      SCHEDULER_ENABLED: 'false'
+      SCHEDULER_DRY_RUN: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test
+      - run: npm run build
