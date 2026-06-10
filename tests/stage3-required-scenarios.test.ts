@@ -405,7 +405,7 @@ describe('stage 3 required scenario coverage', () => {
     }
   });
 
-  it('coupon flow starts, can be cancelled, and entered code does not call redeem', async () => {
+  it('coupon flow starts, can be cancelled, and entered code calls redeem', async () => {
     const store = new InMemoryConversationStore();
     const couponService = { redeem: vi.fn() };
     const ctx = createCtx(MENU_BUTTONS.activateCoupon);
@@ -421,7 +421,7 @@ describe('stage 3 required scenario coverage', () => {
       conversationStore: store,
       couponService,
     });
-    expect(couponService.redeem).not.toHaveBeenCalled();
+    expect(couponService.redeem).toHaveBeenCalledWith('STR-1M-K8X2PQ', '1');
     expect(replyMock(input)).toHaveBeenCalledWith(MESSAGES.couponNotConfigured, expect.any(Object));
   });
 

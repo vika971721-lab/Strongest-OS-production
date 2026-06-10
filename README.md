@@ -341,3 +341,66 @@ Partial failures не теряют платёж: event создаётся до a
 ### Что остаётся для этапа промокодов
 
 На следующем этапе остаются `access_coupons`, подарочные промокоды и их реальное погашение. Scheduler, production webhook, Docker и GitHub Actions по-прежнему не входят в этап Telegram Stars.
+
+## Этап 5: подарочные промокоды Strongest OS
+
+Подарочный промокод — одноразовый купон из таблицы `access_coupons`, который даёт доступ на 30, 60 или 180 дней. Код можно передать другому человеку: доступ получает не создатель купона и не владелец username, а тот Telegram-пользователь, который первым успешно активировал нормализованный код в личном чате с ботом.
+
+### Как работает активация
+
+1. Пользователь нажимает `🎟 Активировать промокод`.
+2. Бот требует private chat, проверяет свежий статус доступа и ставит conversation state `awaiting_coupon` на 10 минут.
+3. Пользователь отправляет код одним сообщением. Бот делает `trim`, переводит код в uppercase, отклоняет пустые, многострочные, слишком длинные значения и Telegram-команды.
+4. Перед активацией выполняется безопасная предварительная проверка купона, но окончательную гарантию даёт только backend RPC `redeem_access_coupon` через Supabase service role.
+5. При успехе купон остаётся в базе со статусом `redeemed`, а subscription становится `active`.
+
+Длительность берётся только из `access_coupons.duration_days`; текст кода (`STR-1M`, `STR-2M`, `STR-6M`) нужен только для удобства администратора и пользователя. Подарочный купон не меняет `trial_used`, `first_payment_at`, `last_payment_at`, не создаёт `payment_orders` и `payment_events`, поэтому право на льготный first month сохраняется, если пользователь ещё не покупал его ранее.
+
+### Новый и существующий пользователь
+
+Если у пользователя ещё нет Strongest OS Auth account, backend сначала создаёт аккаунт через существующий payment/access gateway, создаёт или получает pending subscription, а затем вызывает атомарное погашение. Если пользователь проиграл гонку за купон после создания аккаунта, дни не выдаются, pending subscription может остаться, пароль повторно не генерируется и второй аккаунт не создаётся.
+
+Если аккаунт уже существует, бот не создаёт нового Auth user, не меняет пароль и не создаёт дублирующую subscription. RPC добавляет дни по общей UTC-формуле:
+
+- если `subscriptions.expires_at` есть и находится в будущем, база продления — текущий `expires_at`;
+- иначе база продления — `now()`;
+- новый срок — `base + access_coupons.duration_days`.
+
+После успешной активации выставляются `status = active`, `expires_at`, `current_period_end`, очищаются `expired_at`, `delete_after`, `marked_for_deletion_at`. Статусы `pending`, `expired`, `cancelled` и `marked_for_deletion` восстанавливаются в `active`; `banned` и `deleted` отклоняются без изменения купона.
+
+### Атомарность и гонки
+
+Migration `migrations/20260610_access_coupon_redemption.sql` добавляет диагностический запрос дублей, уникальный индекс `access_coupons_code_uidx` и RPC `redeem_access_coupon`. Функция в одной транзакции блокирует строку купона через `FOR UPDATE`, проверяет статус, expiration, допустимую длительность, затем блокирует subscription пользователя, проверяет `banned/deleted`, рассчитывает новый срок, обновляет subscription и только затем помечает купон `redeemed`.
+
+Если два пользователя одновременно отправят один код, первый завершивший транзакцию получит дни, второй увидит `already_redeemed`. Повторная отправка уже погашенного кода не продлевает subscription второй раз.
+
+Перед применением migration вручную проверьте дубли:
+
+```sql
+select code, count(*)
+from access_coupons
+group by code
+having count(*) > 1;
+```
+
+### Admin-команды
+
+Доступны только Telegram ID из `ADMIN_TELEGRAM_IDS`:
+
+- `/admin_issue_coupon <days> [count]` — выпускает 1..100 купонов на 30, 60 или 180 дней, `source = admin`, `status = issued`.
+- `/admin_coupon_info <code>` — показывает code, duration_days, status, source, issued_at, expires_at, redeemed_at, redeemed_by_telegram_id, created_by_telegram_id. При lookup применяется lazy expiration для истёкших `issued` купонов.
+- `/admin_cancel_coupon <code>` — запрашивает подтверждение inline-кнопкой и отменяет только `issued` купон. `redeemed` купон нельзя отменить, запись не удаляется.
+
+Если купонов много, бот отправляет список текстовым файлом, чтобы не превышать лимит Telegram-сообщения.
+
+### Ручная проверка конкурентной активации
+
+1. Примените migration `20260610_access_coupon_redemption.sql` к staging Supabase.
+2. Выпустите один купон: `/admin_issue_coupon 30`.
+3. Подготовьте двух тестовых Telegram-пользователей с subscription не `banned` и не `deleted`.
+4. Почти одновременно отправьте один и тот же код обоим пользователям или вызовите backend flow параллельно из двух тестовых процессов.
+5. Проверьте, что в `access_coupons` купон один раз перешёл в `redeemed`, `redeemed_by_telegram_id` заполнен только победителем, а из двух subscriptions продлена только одна.
+
+### Что остаётся для этапа scheduler
+
+В этом этапе intentionally не добавлены scheduler подписок, уведомления за 5/3/1 день и 1 час, физическое удаление пользователей, production webhook, Docker и GitHub Actions. Lazy expiration купонов выполняется при активации или admin lookup; отдельный фоновый scheduler истечения купонов остаётся для следующего этапа.

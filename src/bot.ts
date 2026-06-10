@@ -25,7 +25,12 @@ import {
 } from './middleware/rateLimitMiddleware.js';
 import { errorMiddleware } from './middleware/errorMiddleware.js';
 import { userContextMiddleware } from './middleware/userContextMiddleware.js';
-import { MockCouponService } from './services/couponService.js';
+import {
+  CouponAttemptLimiter,
+  DefaultCouponService,
+  MockCouponService,
+  type CouponService,
+} from './services/couponService.js';
 import { MockAccountService, type AccountService } from './services/accountService.js';
 import { DefaultAccessStateService } from './services/accessStateService.js';
 import { InMemoryConversationStore } from './state/inMemoryConversationStore.js';
@@ -47,11 +52,24 @@ import {
   type PaymentAccessGateway,
 } from './services/paymentFlow.js';
 import { MESSAGES } from './utils/messages.js';
+import { getSupabaseAdminClient } from './integrations/supabaseAdmin.js';
+import {
+  SupabaseCouponRepository,
+  type CouponRepository,
+} from './repositories/couponRepository.js';
+import {
+  handleAdminCancelCouponCommand,
+  handleAdminCouponInfoCommand,
+  handleAdminIssueCouponCommand,
+  handleAdminCouponCancelCallback,
+} from './commands/couponAdminCommands.js';
 
 export interface BotDependencies {
   conversationStore?: InMemoryConversationStore;
   callbackRateLimiter?: InMemoryCallbackRateLimiter;
-  couponService?: MockCouponService;
+  couponService?: CouponService;
+  couponRepository?: CouponRepository;
+  couponAttemptLimiter?: CouponAttemptLimiter;
   accountService?: AccountService;
   accessStateProvider?: AccessStateProvider;
   paymentOrderRepository?: PaymentOrderRepository;
@@ -68,7 +86,6 @@ export const createBot = (
   const bot = new Telegraf<BotContext>(env.botToken);
   const conversationStore = dependencies.conversationStore ?? new InMemoryConversationStore();
   const callbackRateLimiter = dependencies.callbackRateLimiter ?? new InMemoryCallbackRateLimiter();
-  const couponService = dependencies.couponService ?? new MockCouponService();
   const accountService = dependencies.accountService ?? new MockAccountService();
   const accessStateProvider = dependencies.accessStateProvider ?? new DefaultAccessStateService();
   const paymentOrderRepository =
@@ -77,6 +94,16 @@ export const createBot = (
     dependencies.paymentEventRepository ?? new InMemoryPaymentEventRepository();
   const paymentAccessGateway =
     dependencies.paymentAccessGateway ?? new BotPaymentAccessGateway(accessStateProvider);
+  const supabaseClient = getSupabaseAdminClient(env);
+  const couponRepository =
+    dependencies.couponRepository ??
+    (supabaseClient ? new SupabaseCouponRepository(supabaseClient) : undefined);
+  const couponService =
+    dependencies.couponService ??
+    (couponRepository
+      ? new DefaultCouponService(couponRepository, paymentAccessGateway)
+      : new MockCouponService());
+  const couponAttemptLimiter = dependencies.couponAttemptLimiter ?? new CouponAttemptLimiter();
   const uiDeps = {
     env,
     conversationStore,
@@ -133,6 +160,18 @@ export const createBot = (
   bot.command('admin_extend', async (ctx) =>
     handleAdminExtendCommand(ctx, env, paymentAccessGateway),
   );
+  bot.command('admin_issue_coupon', async (ctx) =>
+    handleAdminIssueCouponCommand(ctx, env, couponRepository),
+  );
+  bot.command('admin_coupon_info', async (ctx) =>
+    handleAdminCouponInfoCommand(ctx, env, couponRepository),
+  );
+  bot.command('admin_cancel_coupon', async (ctx) =>
+    handleAdminCancelCouponCommand(ctx, env, couponRepository),
+  );
+  bot.action(/^admin_coupon_cancel:/, async (ctx) =>
+    handleAdminCouponCancelCallback(ctx, env, couponRepository),
+  );
   bot.on('callback_query', async (ctx) => handleCallbackQuery(ctx, uiDeps));
   bot.on('pre_checkout_query', async (ctx) =>
     handlePreCheckoutQuery({
@@ -142,7 +181,9 @@ export const createBot = (
       orderRepository: paymentOrderRepository,
     }),
   );
-  bot.on('text', async (ctx) => handleTextMessage(ctx, { ...uiDeps, couponService }));
+  bot.on('text', async (ctx) =>
+    handleTextMessage(ctx, { ...uiDeps, couponService, couponAttemptLimiter }),
+  );
   bot.on('message', async (ctx, next) => {
     if (ctx.message && 'successful_payment' in ctx.message) {
       await handleSuccessfulPayment({

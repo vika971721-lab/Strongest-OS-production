@@ -82,6 +82,12 @@ export const createPasswordCreatedKeyboard = (appUrl?: string) =>
 export const createCouponCancelKeyboard = () =>
   Markup.inlineKeyboard([[Markup.button.callback('Отмена', CALLBACK_DATA.couponCancel)]]);
 
+export const createCouponSuccessKeyboard = (appUrl?: string) =>
+  Markup.inlineKeyboard([
+    ...compact([urlButton('Открыть Strongest OS', appUrl)]).map((button) => [button]),
+    [Markup.button.callback('Мой доступ', CALLBACK_DATA.navAccess)],
+  ]);
+
 export const createRetryKeyboard = () =>
   Markup.inlineKeyboard([[Markup.button.callback('Повторить', CALLBACK_DATA.navRetryAccess)]]);
 

@@ -18,8 +18,9 @@ export const MESSAGES = {
   noActiveAction: 'Активных действий нет.',
   staleButton: 'Эта кнопка устарела. Откройте главное меню.',
   paymentNextStage: 'Оплата через Telegram Stars будет подключена следующим этапом.',
-  couponNotConfigured:
-    'Проверка промокода будет подключена следующим этапом после платёжной системы.',
+  couponNotConfigured: 'Не удалось проверить промокод. Попробуйте ещё раз через несколько секунд.',
+  couponTooManyAttempts: 'Слишком много попыток. Подождите несколько минут и попробуйте снова.',
+  couponInvalidInput: 'Отправьте промокод одним сообщением без лишних строк.',
   passwordPrivateOnly: 'Для восстановления пароля откройте личный чат с ботом.',
 } as const;
 
@@ -149,6 +150,52 @@ export const buildPlanMessage = (state: UserAccessState, pricing: PricingConfig)
 
 export const buildCouponPromptMessage = (): string =>
   'Отправьте промокод одним сообщением.\n\nПример:\nSTR-1M-K8X2PQ\n\nПромокод является одноразовым. Доступ получает пользователь, который первым успешно активирует код.';
+
+export const buildCouponSuccessMessage = (
+  days: number,
+  expiresAt: Date | undefined,
+  timeZone: string,
+): string =>
+  `Промокод активирован.
+
+Добавлено: ${days} дней
+
+Доступ активен до: ${formatDateTime(expiresAt?.toISOString(), timeZone)}`;
+
+export const buildCouponNewAccountSuccessMessage = (input: {
+  days: number;
+  expiresAt: Date | undefined;
+  timeZone: string;
+  appUrl: string;
+  loginEmail: string;
+  password: string;
+}): string =>
+  `Промокод активирован.
+
+Ваш аккаунт Strongest OS создан.
+
+Добавлено: ${input.days} дней
+
+Доступ активен до: ${formatDateTime(input.expiresAt?.toISOString(), input.timeZone)}
+
+Ссылка:
+${escapeTelegramHtml(input.appUrl)}
+
+Логин:
+${escapeTelegramHtml(input.loginEmail)}
+
+Пароль:
+${escapeTelegramHtml(input.password)}
+
+Сохраните данные. Бот не хранит пароль и не сможет показать его повторно.`;
+
+export const buildCouponAlreadyRedeemedByUserMessage = (
+  expiresAt: Date | undefined,
+  timeZone: string,
+): string =>
+  `Этот промокод уже был активирован вами.
+
+Текущий срок доступа: ${formatDateTime(expiresAt?.toISOString(), timeZone)}`;
 
 export const buildPasswordRecoveryMessage = (state: UserAccessState): string => {
   switch (state.kind) {
