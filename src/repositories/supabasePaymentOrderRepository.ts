@@ -49,24 +49,27 @@ interface SupabaseLike {
   };
 }
 
-const mapOrder = (row: OrderRow): PaymentOrder => ({
-  id: row.id,
-  orderId: row.order_id,
-  telegramId: row.telegram_id,
-  supabaseUserId: row.supabase_user_id ?? undefined,
-  provider: 'telegram_stars',
-  providerInvoicePayload: row.provider_invoice_payload,
-  plan: row.plan as PaymentPlan,
-  amount: row.amount,
-  currency: 'XTR',
-  periodDays: row.period_days,
-  status: row.status as PaymentOrder['status'],
-  providerPaymentId: row.provider_payment_id ?? undefined,
-  createdAt: new Date(row.created_at),
-  paidAt: row.paid_at ? new Date(row.paid_at) : undefined,
-  cancelledAt: row.cancelled_at ? new Date(row.cancelled_at) : undefined,
-  rawPayload: row.raw_payload as SanitizedPaymentPayload | undefined,
-});
+const mapOrder = (row: OrderRow): PaymentOrder => {
+  const order: PaymentOrder = {
+    id: row.id,
+    orderId: row.order_id,
+    telegramId: row.telegram_id,
+    provider: 'telegram_stars',
+    providerInvoicePayload: row.provider_invoice_payload,
+    plan: row.plan as PaymentPlan,
+    amount: row.amount,
+    currency: 'XTR',
+    periodDays: row.period_days,
+    status: row.status as PaymentOrder['status'],
+    createdAt: new Date(row.created_at),
+  };
+  if (row.supabase_user_id) order.supabaseUserId = row.supabase_user_id;
+  if (row.provider_payment_id) order.providerPaymentId = row.provider_payment_id;
+  if (row.paid_at) order.paidAt = new Date(row.paid_at);
+  if (row.cancelled_at) order.cancelledAt = new Date(row.cancelled_at);
+  if (row.raw_payload) order.rawPayload = row.raw_payload as SanitizedPaymentPayload;
+  return order;
+};
 
 export class SupabasePaymentOrderRepository implements PaymentOrderRepository {
   private readonly db: SupabaseLike;

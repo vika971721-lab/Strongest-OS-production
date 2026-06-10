@@ -63,11 +63,11 @@ export class SupabaseAccessStateSource implements AccessStateSource {
       telegramId,
       botUserExists: Boolean(user),
       hasAuthAccount: Boolean(user?.supabase_user_id),
-      loginEmail: user?.login_email ?? undefined,
-      status: sub?.status ?? undefined,
+      loginEmail: user?.login_email ?? null,
+      status: sub?.status ?? null,
       trialUsed: sub?.trial_used ?? false,
-      expiresAt: sub?.expires_at ?? undefined,
-      deleteAfter: sub?.delete_after ?? undefined,
+      expiresAt: sub?.expires_at ?? null,
+      deleteAfter: sub?.delete_after ?? null,
     };
   }
 }

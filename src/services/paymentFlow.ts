@@ -553,9 +553,15 @@ export const handleSuccessfulPayment = async (input: {
   const message = getSuccessfulPaymentMessage(input.ctx);
   if (!telegramId || !message) return;
   const userInfo = {
-    username: input.ctx.state.user?.username,
-    firstName: input.ctx.state.user?.firstName,
-    lastName: input.ctx.state.user?.lastName,
+    ...(input.ctx.state.user?.username !== undefined
+      ? { username: input.ctx.state.user.username }
+      : {}),
+    ...(input.ctx.state.user?.firstName !== undefined
+      ? { firstName: input.ctx.state.user.firstName }
+      : {}),
+    ...(input.ctx.state.user?.lastName !== undefined
+      ? { lastName: input.ctx.state.user.lastName }
+      : {}),
   };
   const payment = message.successful_payment;
   logger.info({ telegramId }, 'successful_payment_received');

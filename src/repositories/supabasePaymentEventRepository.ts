@@ -31,22 +31,25 @@ interface SupabaseLike {
   };
 }
 
-const mapEvent = (row: EventRow): PaymentEvent => ({
-  id: row.id,
-  provider: 'telegram_stars',
-  providerEventId: row.provider_event_id,
-  orderId: row.order_id,
-  telegramId: row.telegram_id,
-  supabaseUserId: row.supabase_user_id ?? undefined,
-  eventType: row.event_type as PaymentEvent['eventType'],
-  amount: row.amount,
-  currency: 'XTR',
-  plan: row.plan as PaymentPlan,
-  periodDays: row.period_days,
-  rawPayload: row.raw_payload as PaymentEvent['rawPayload'],
-  processedAt: row.processed_at ? new Date(row.processed_at) : undefined,
-  createdAt: new Date(row.created_at),
-});
+const mapEvent = (row: EventRow): PaymentEvent => {
+  const event: PaymentEvent = {
+    id: row.id,
+    provider: 'telegram_stars',
+    providerEventId: row.provider_event_id,
+    orderId: row.order_id,
+    telegramId: row.telegram_id,
+    eventType: row.event_type as PaymentEvent['eventType'],
+    amount: row.amount,
+    currency: 'XTR',
+    plan: row.plan as PaymentPlan,
+    periodDays: row.period_days,
+    rawPayload: row.raw_payload as PaymentEvent['rawPayload'],
+    createdAt: new Date(row.created_at),
+  };
+  if (row.supabase_user_id) event.supabaseUserId = row.supabase_user_id;
+  if (row.processed_at) event.processedAt = new Date(row.processed_at);
+  return event;
+};
 
 export class SupabasePaymentEventRepository implements PaymentEventRepository {
   private readonly db: SupabaseLike;
