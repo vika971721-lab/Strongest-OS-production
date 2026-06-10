@@ -74,6 +74,13 @@ class FakeGateway implements PaymentAccessGateway {
     return { expiresAt: this.expiresAt, firstPayment: input.plan === 'first_month', applied: true };
   }
 
+  ensureBotUser(
+    _telegramId: string,
+    _userInfo?: { username?: string; firstName?: string; lastName?: string },
+  ): Promise<void> {
+    return Promise.resolve();
+  }
+
   async getAccessSummary(_telegramId: string): Promise<{ expiresAt?: Date; loginEmail?: string }> {
     await Promise.resolve();
     return { expiresAt: this.expiresAt, loginEmail: 'tg1@example.invalid' };

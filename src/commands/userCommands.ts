@@ -8,7 +8,7 @@ import { handleAccessScreen } from '../handlers/menuHandlers.js';
 export const handleMenuCommand = async (ctx: BotContext, deps: UiDependencies): Promise<void> => {
   const telegramId = ctx.state.user?.telegramId;
   if (telegramId) await deps.conversationStore.clear(telegramId);
-  await ctx.reply('Главное меню Strongest OS.', createMainMenuKeyboard());
+  await ctx.reply('Главное меню.', createMainMenuKeyboard());
 };
 
 export const handleStatusCommand = async (ctx: BotContext, deps: UiDependencies): Promise<void> => {

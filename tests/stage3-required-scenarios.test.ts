@@ -158,12 +158,12 @@ const inlineLabels = (markup: ReturnType<typeof createAccessKeyboard>) =>
 
 describe('stage 3 required scenario coverage', () => {
   it.each([
-    ['new user', states.unregistered, 'Добро пожаловать'],
+    ['new user', states.unregistered, 'Strongest OS запущена'],
     ['active user', states.active, 'Доступ активен'],
     ['expired user', states.expired, 'Срок доступа закончился'],
     ['banned user', states.banned, 'Доступ к аккаунту ограничен'],
     ['marked for deletion', states.marked_for_deletion, 'ожидает удаления'],
-    ['deleted user', states.deleted, 'Данные аккаунта были удалены'],
+    ['deleted user', states.deleted, 'Данные аккаунта удалены'],
   ])('/start welcome for %s', async (_name, state, expected) => {
     const store = new InMemoryConversationStore();
     await store.set('1', createAwaitingCouponState(100));
@@ -226,14 +226,14 @@ describe('stage 3 required scenario coverage', () => {
       'trial true expired',
       states.expired,
       'Возобновление Strongest OS',
-      'сохранённые данные',
+      'Сохранённые данные',
       '150 Telegram Stars',
     ],
     [
       'cancelled',
       states.cancelled,
       'Возобновление Strongest OS',
-      'После оплаты доступ будет восстановлен',
+      'После оплаты доступ восстановится',
       '150 Telegram Stars',
     ],
     [
@@ -243,10 +243,10 @@ describe('stage 3 required scenario coverage', () => {
       'отменит удаление',
       '150 Telegram Stars',
     ],
-    ['banned', states.banned, 'Оформление доступа недоступно', 'Обратитесь в поддержку', ''],
+    ['banned', states.banned, 'Оформление доступа недоступно', 'Обратись в поддержку', ''],
     ['deleted', states.deleted, 'Данные аккаунта удалены', 'перед созданием нового доступа', ''],
-    ['broken', states.broken_link, 'Обнаружена проблема', 'Не создавайте повторный аккаунт', ''],
-    ['database error', states.error, 'Не удалось загрузить данные аккаунта', 'Попробуйте', ''],
+    ['broken', states.broken_link, 'Обнаружена проблема', 'Не создавай повторный', ''],
+    ['database error', states.error, 'Не удалось загрузить данные', 'Попробуйте', ''],
   ])('plan screen %s', (_name, state, a, b, c) => {
     const text = buildPlanMessage(state, pricing);
     expect(text).toContain(a);
@@ -273,18 +273,18 @@ describe('stage 3 required scenario coverage', () => {
   });
 
   it.each([
-    ['no bot user', states.unregistered, 'У вас пока нет аккаунта'],
-    ['no auth user', states.telegram_registered, 'аккаунт Strongest OS ещё не создан'],
+    ['no bot user', states.unregistered, 'Аккаунт Strongest OS ещё не создан'],
+    ['no auth user', states.telegram_registered, 'Аккаунт Strongest OS ещё не создан'],
     ['pending', states.pending, 'Аккаунт Strongest OS создан'],
     ['active', states.active, 'Действует до'],
     ['expired', states.expired, 'Доступ закончился'],
-    ['cancelled', states.cancelled, 'Подписка отменена'],
+    ['cancelled', states.cancelled, 'Доступ отменён'],
     ['banned', states.banned, 'Доступ к аккаунту ограничен'],
     ['marked', states.marked_for_deletion, 'Запланированная дата удаления'],
-    ['deleted', states.deleted, 'Данные аккаунта были удалены'],
-    ['broken', states.broken_link, 'Не удалось корректно определить состояние аккаунта'],
+    ['deleted', states.deleted, 'Данные аккаунта удалены'],
+    ['broken', states.broken_link, 'Не удалось определить состояние аккаунта'],
     ['unknown', states.unknown_status, 'Не удалось определить состояние доступа'],
-    ['timeout', states.error, 'Не удалось загрузить данные аккаунта'],
+    ['timeout', states.error, 'Не удалось загрузить данные'],
   ])('access message %s', (_name, state, expected) => {
     const text = buildAccessMessage(state, 'Asia/Almaty', nowMs);
     expect(text).toContain(expected);
@@ -427,7 +427,7 @@ describe('stage 3 required scenario coverage', () => {
 
   it.each([
     ['banned', states.banned, 'недоступна'],
-    ['deleted', states.deleted, 'Данные аккаунта были удалены'],
+    ['deleted', states.deleted, 'Данные аккаунта удалены'],
   ])('coupon start is blocked for %s', async (_name, state, expected) => {
     const ctx = createCtx(MENU_BUTTONS.activateCoupon);
     await handleCouponStart(ctx, deps(state));
@@ -446,12 +446,12 @@ describe('stage 3 required scenario coverage', () => {
   });
 
   it.each([
-    ['no account', states.unregistered, 'У вас пока нет аккаунта'],
-    ['active', states.active, 'Создать новый пароль?'],
-    ['expired', states.expired, 'Создать новый пароль?'],
-    ['banned', states.banned, 'останется ограничен'],
-    ['deleted', states.deleted, 'Данные аккаунта были удалены'],
-    ['broken', states.broken_link, 'Не удалось корректно определить'],
+    ['no account', states.unregistered, 'Аккаунт Strongest OS ещё не создан'],
+    ['active', states.active, 'Продолжить?'],
+    ['expired', states.expired, 'Продолжить?'],
+    ['banned', states.banned, 'останется заблокирован'],
+    ['deleted', states.deleted, 'Данные аккаунта удалены'],
+    ['broken', states.broken_link, 'Не удалось определить'],
   ])('password recovery copy for %s', (_name, state, expected) => {
     expect(buildPasswordRecoveryMessage(state)).toContain(expected);
   });
@@ -465,7 +465,7 @@ describe('stage 3 required scenario coverage', () => {
     await handleTextMessage(ctx, { ...deps(states.active, accountService), accountService });
     expect(accountService.resetPassword).not.toHaveBeenCalled();
     expect(replyMock(ctx)).toHaveBeenCalledWith(
-      expect.stringContaining('Создать новый пароль?'),
+      expect.stringContaining('Продолжить?'),
       expect.any(Object),
     );
   });
@@ -509,7 +509,7 @@ describe('stage 3 required scenario coverage', () => {
     ['desktop', buildDesktopInstallationMessage(), 'Chrome или Edge'],
     ['terms', buildTermsMessage(), 'Telegram Stars'],
     ['privacy', buildPrivacyMessage(), 'Пароль не хранится'],
-    ['support configured', buildSupportMessage(true), 'Никому не отправляйте пароль'],
+    ['support configured', buildSupportMessage(true), 'Не отправляй никому пароль'],
     ['support missing', buildSupportMessage(false), 'не настроен'],
   ])('informational section %s', (_name, text, expected) => {
     expect(text).toContain(expected);
