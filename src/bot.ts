@@ -63,6 +63,19 @@ import {
   handleAdminIssueCouponCommand,
   handleAdminCouponCancelCallback,
 } from './commands/couponAdminCommands.js';
+import {
+  handleAdminRunSchedulerCommand,
+  handleAdminSchedulerPreviewCommand,
+  handleAdminSchedulerStatusCommand,
+  handleAdminSubscriptionLifecycleCommand,
+} from './commands/schedulerAdminCommands.js';
+import { NoopScheduler, type Scheduler } from './scheduler/scheduler.js';
+import { type SubscriptionLifecycleRepository } from './services/subscriptionLifecycleService.js';
+import {
+  SupabaseNotificationRepository,
+  type NotificationRepository,
+} from './repositories/notificationRepository.js';
+import { SupabaseSubscriptionRepository } from './repositories/subscriptionRepository.js';
 
 export interface BotDependencies {
   conversationStore?: InMemoryConversationStore;
@@ -75,6 +88,9 @@ export interface BotDependencies {
   paymentOrderRepository?: PaymentOrderRepository;
   paymentEventRepository?: PaymentEventRepository;
   paymentAccessGateway?: PaymentAccessGateway;
+  scheduler?: Scheduler;
+  subscriptionLifecycleRepository?: SubscriptionLifecycleRepository;
+  notificationRepository?: NotificationRepository;
 }
 
 export const createBot = (
@@ -104,6 +120,13 @@ export const createBot = (
       ? new DefaultCouponService(couponRepository, paymentAccessGateway)
       : new MockCouponService());
   const couponAttemptLimiter = dependencies.couponAttemptLimiter ?? new CouponAttemptLimiter();
+  const scheduler = dependencies.scheduler ?? new NoopScheduler();
+  const subscriptionLifecycleRepository =
+    dependencies.subscriptionLifecycleRepository ??
+    (supabaseClient ? new SupabaseSubscriptionRepository(supabaseClient) : undefined);
+  const notificationRepository =
+    dependencies.notificationRepository ??
+    (supabaseClient ? new SupabaseNotificationRepository(supabaseClient) : undefined);
   const uiDeps = {
     env,
     conversationStore,
@@ -144,6 +167,27 @@ export const createBot = (
   bot.command('cancel', async (ctx) => handleCancelCommand(ctx, uiDeps));
   bot.command('admin', async (ctx) => handleAdminCommand(ctx, env));
   bot.command('admin_preview_status', async (ctx) => handleAdminPreviewStatusCommand(ctx, env));
+  bot.command('admin_scheduler_status', async (ctx) =>
+    handleAdminSchedulerStatusCommand(ctx, env, scheduler),
+  );
+  bot.command('admin_scheduler_preview', async (ctx) =>
+    handleAdminSchedulerPreviewCommand(ctx, env, scheduler),
+  );
+  bot.command('admin_run_scheduler', async (ctx) =>
+    handleAdminRunSchedulerCommand(ctx, env, scheduler),
+  );
+  bot.command('admin_subscription_lifecycle', async (ctx) => {
+    if (!subscriptionLifecycleRepository || !notificationRepository) {
+      await ctx.reply('Lifecycle repositories are not configured.');
+      return;
+    }
+    await handleAdminSubscriptionLifecycleCommand(
+      ctx,
+      env,
+      subscriptionLifecycleRepository,
+      notificationRepository,
+    );
+  });
   bot.command('paysupport', async (ctx) => handlePaySupportCommand(ctx, env));
   bot.command('admin_payment', async (ctx) =>
     handleAdminPaymentCommand(
