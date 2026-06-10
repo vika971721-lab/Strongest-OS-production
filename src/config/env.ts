@@ -21,6 +21,12 @@ export interface AppEnv {
   port: number;
   pricing: PricingConfig;
   paymentOrderTtlMinutes?: number;
+  schedulerEnabled?: boolean;
+  schedulerIntervalSeconds?: number;
+  schedulerBatchSize?: number;
+  subscriptionRetentionDays?: number;
+  deletionWarningHours?: number;
+  schedulerDryRun?: boolean;
 }
 
 export interface SafeEnvLogData {
@@ -38,6 +44,12 @@ export interface SafeEnvLogData {
   port: number;
   pricing: PricingConfig;
   paymentOrderTtlMinutes?: number;
+  schedulerEnabled: boolean;
+  schedulerIntervalSeconds: number;
+  schedulerBatchSize: number;
+  subscriptionRetentionDays: number;
+  deletionWarningHours: number;
+  schedulerDryRun: boolean;
 }
 
 const trimOptional = (value: unknown): string | undefined => {
@@ -56,11 +68,19 @@ const trimWithDefault =
 const optionalUrl = z.preprocess(trimOptional, z.string().url().optional());
 const optionalText = z.preprocess(trimOptional, z.string().optional());
 
-const positiveIntegerFromEnv = (fallback: string) =>
+const positiveIntegerFromEnv = (fallback: string, max = 100_000) =>
   z.preprocess(
     trimWithDefault(fallback),
-    z.coerce.number().int().positive('must be a positive integer'),
+    z.coerce.number().int().positive('must be a positive integer').max(max, `must be <= ${max}`),
   );
+
+const booleanFromEnv = (fallback: string) =>
+  z.preprocess((value) => {
+    const raw = trimWithDefault(fallback)(value).toLowerCase();
+    if (raw === 'true') return true;
+    if (raw === 'false') return false;
+    return raw;
+  }, z.boolean());
 
 const positivePortFromEnv = z.preprocess(
   trimWithDefault('3000'),
@@ -103,7 +123,13 @@ const rawEnvSchema = z.object({
   RENEWAL_PERIOD_STARS: positiveIntegerFromEnv('150'),
   FIRST_PERIOD_DAYS: positiveIntegerFromEnv('30'),
   RENEWAL_PERIOD_DAYS: positiveIntegerFromEnv('30'),
-  PAYMENT_ORDER_TTL_MINUTES: positiveIntegerFromEnv('15'),
+  PAYMENT_ORDER_TTL_MINUTES: positiveIntegerFromEnv('15', 24 * 60),
+  SCHEDULER_ENABLED: booleanFromEnv('true'),
+  SCHEDULER_INTERVAL_SECONDS: positiveIntegerFromEnv('60', 86_400),
+  SCHEDULER_BATCH_SIZE: positiveIntegerFromEnv('100', 10_000),
+  SUBSCRIPTION_RETENTION_DAYS: positiveIntegerFromEnv('60', 3_650),
+  DELETION_WARNING_HOURS: positiveIntegerFromEnv('24', 24 * 365),
+  SCHEDULER_DRY_RUN: booleanFromEnv('false'),
 });
 
 export const parseEnv = (source: NodeJS.ProcessEnv): AppEnv => {
@@ -136,6 +162,12 @@ export const parseEnv = (source: NodeJS.ProcessEnv): AppEnv => {
       renewalPeriodDays: parsed.data.RENEWAL_PERIOD_DAYS,
     },
     paymentOrderTtlMinutes: parsed.data.PAYMENT_ORDER_TTL_MINUTES,
+    schedulerEnabled: parsed.data.SCHEDULER_ENABLED,
+    schedulerIntervalSeconds: parsed.data.SCHEDULER_INTERVAL_SECONDS,
+    schedulerBatchSize: parsed.data.SCHEDULER_BATCH_SIZE,
+    subscriptionRetentionDays: parsed.data.SUBSCRIPTION_RETENTION_DAYS,
+    deletionWarningHours: parsed.data.DELETION_WARNING_HOURS,
+    schedulerDryRun: parsed.data.SCHEDULER_DRY_RUN,
   };
 
   if (parsed.data.BOT_TOKEN) env.botToken = parsed.data.BOT_TOKEN;
@@ -186,4 +218,10 @@ export const toSafeEnvLogData = (env: AppEnv): SafeEnvLogData => ({
   port: env.port,
   pricing: env.pricing,
   paymentOrderTtlMinutes: env.paymentOrderTtlMinutes ?? 15,
+  schedulerEnabled: env.schedulerEnabled ?? true,
+  schedulerIntervalSeconds: env.schedulerIntervalSeconds ?? 60,
+  schedulerBatchSize: env.schedulerBatchSize ?? 100,
+  subscriptionRetentionDays: env.subscriptionRetentionDays ?? 60,
+  deletionWarningHours: env.deletionWarningHours ?? 24,
+  schedulerDryRun: env.schedulerDryRun ?? false,
 });

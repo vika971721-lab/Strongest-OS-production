@@ -404,3 +404,93 @@ having count(*) > 1;
 ### Что остаётся для этапа scheduler
 
 В этом этапе intentionally не добавлены scheduler подписок, уведомления за 5/3/1 день и 1 час, физическое удаление пользователей, production webhook, Docker и GitHub Actions. Lazy expiration купонов выполняется при активации или admin lookup; отдельный фоновый scheduler истечения купонов остаётся для следующего этапа.
+
+## Этап 6: автоматический жизненный цикл подписки
+
+### Scheduler
+
+Backend запускает `SchedulerRunner` только когда `SCHEDULER_ENABLED=true`. Интервал задаётся `SCHEDULER_INTERVAL_SECONDS`, batch-size — `SCHEDULER_BATCH_SIZE`. Один локальный процесс не начинает новый cycle, пока предыдущий не завершился, а защита от нескольких инстансов вынесена в Postgres advisory lock через RPC `try_acquire_subscription_scheduler_lock()` / `release_subscription_scheduler_lock()`.
+
+Cycle использует единый UTC `now`, обрабатывает записи batch-ами и продолжает работу, если один пользователь завершился ошибкой. `SIGINT` и `SIGTERM` останавливают локальный interval и Telegram bot graceful shutdown. При занятом database lock цикл пропускается и логируется `scheduler_lock_skipped`; это не считается ошибкой.
+
+### Напоминания и выбор актуального окна
+
+Для `active` подписки scheduler отправляет только одно самое актуальное уведомление текущего периода:
+
+- больше 5 дней до `expires_at` — ничего;
+- от 3 до 5 дней — `five_days`;
+- от 1 до 3 дней — `three_days`;
+- от 1 часа до 1 дня — `one_day`;
+- меньше 1 часа, но срок ещё не наступил — `one_hour`;
+- `expires_at <= now` — `expired`.
+
+Если scheduler пропустил несколько окон, старые окна не догоняются: при 2 днях уйдёт только `three_days`, при 40 минутах — только `one_hour`, после окончания — только `expired`.
+
+### Защита от дублей уведомлений
+
+`subscription_notifications` стала period-aware: migration добавляет `period_end timestamptz` и UNIQUE index по `(subscription_id, type, period_end)`. Это позволяет повторно отправлять `five_days`/`three_days`/другие уведомления после продления, но не отправлять дубль внутри одного периода.
+
+Перед отправкой `NotificationService` атомарно резервирует запись через RPC `reserve_subscription_notification()`. Только процесс, получивший reservation token, отправляет Telegram message и затем выставляет `sent_at`. Temporary delivery errors освобождают reservation для retry; permanent errors (`bot blocked`, `chat not found`, deactivated user) помечают notification как `failed_permanent`, чтобы не спамить каждую минуту.
+
+### Переход `active → expired` и хранение данных
+
+Когда `status = active` и `expires_at <= now`, lifecycle делает условное обновление только если запись всё ещё active и `expires_at` всё ещё истёк. Устанавливаются:
+
+- `status = expired`;
+- `expired_at = expires_at`;
+- `delete_after = expired_at + SUBSCRIPTION_RETENTION_DAYS`.
+
+`trial_used`, `first_payment_at`, `last_payment_at` и `supabase_user_id` не меняются. Если пользователь оплатил параллельно и срок уже продлён, условное обновление не сработает и логируется skip due to renewal.
+
+Для неполных `expired` записей lifecycle безопасно восстанавливает `expired_at` и `delete_after` из корректного `expires_at`. Если дата отсутствует или невалидна, пользователь не удаляется и запись остаётся для manual review.
+
+### Deletion warning и удаление
+
+Если `status = expired`, `delete_after > now` и до удаления осталось не больше `DELETION_WARNING_HOURS`, отправляется одно `deletion_warning`. Если `delete_after` уже наступил, старое предупреждение не отправляется: subscription условно переводится в `marked_for_deletion`, затем `AccountDeletionService` повторно загружает запись и проверяет, что доступ не восстановлен.
+
+Оплата Telegram Stars и подарочный купон уже переводят subscription в `active` и сбрасывают `expired_at`, `delete_after`, `marked_for_deletion_at`; это отменяет удаление. Перед cleanup scheduler повторно читает subscription, поэтому reactivation перед удалением приводит к `deletion_cancelled_due_to_reactivation` и не удаляет данные/Auth user.
+
+### Cleanup RPC и сохраняемые данные
+
+Migration `20260610_subscription_lifecycle_scheduler.sql` добавляет RPC `cleanup_deleted_account_data(p_supabase_user_id uuid)`. RPC принимает только UUID пользователя, не принимает имена таблиц, работает идемпотентно и удаляет только allowlisted таблицы, если они существуют и имеют подтверждённую колонку `user_id`:
+
+- `daily_focus`;
+- `daily_reviews`;
+- `cigarette_logs`;
+- `daily_statuses`;
+- `daily_notes`;
+- `money_goals`;
+- `bankrolls`;
+- `incomes`;
+- `tasks`;
+- `quest_templates`;
+- `player_profile`.
+
+Не удаляются `payment_orders`, `payment_events`, `subscriptions` и данные других пользователей. После успешного RPC backend удаляет Supabase Auth user через Admin API, а затем минимально анонимизирует `bot_users` (`supabase_user_id`, `login_email`) и выставляет `subscriptions.status = deleted`, `deleted_at = now`. Если cleanup/Auth deletion падает, `deleted` не выставляется и повтор безопасен.
+
+### Dry-run
+
+При `SCHEDULER_DRY_RUN=true` используется та же selection logic, но scheduler только считает и логирует preview: не создаёт notifications, не отправляет Telegram messages, не меняет subscriptions, не вызывает cleanup RPC и не удаляет Auth user.
+
+### Admin-команды
+
+Все команды доступны только admin ID из `ADMIN_TELEGRAM_IDS`:
+
+- `/admin_scheduler_status` — показывает enabled, interval, batch size, retention days, warning hours, dry-run, last run, last success, processed/errors;
+- `/admin_scheduler_preview` — ничего не меняет и показывает counts по `five_days`, `three_days`, `one_day`, `one_hour`, `expired`, `deletion_warning`, `marked_for_deletion`, `deletion`;
+- `/admin_run_scheduler` — запускает один cycle с database lock; в production при `SCHEDULER_DRY_RUN=false` требует `--confirm`;
+- `/admin_subscription_lifecycle <telegram_id>` — показывает lifecycle поля и уведомления текущего периода.
+
+### Migrations и безопасное тестирование
+
+Для этапа 6 примените migration:
+
+```sql
+migrations/20260610_subscription_lifecycle_scheduler.sql
+```
+
+Перед production cleanup проверьте diagnostic queries из migration, foreign keys и allowlist таблиц на staging. Unit tests используют in-memory fakes, не production Supabase и не реальное удаление Auth user.
+
+### Что остаётся для production deployment
+
+Этап 6 не добавляет production webhook, Docker, GitHub Actions и deployment. Для следующего этапа остаётся deployment hardening: webhook/health endpoints, container/runtime configuration, CI/CD, observability и operational runbooks для Supabase migrations и cleanup verification.
