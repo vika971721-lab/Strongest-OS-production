@@ -1,0 +1,120 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { CreatePaymentEventInput, PaymentEvent, PaymentPlan } from '../types/payment.js';
+import type { Database } from '../types/database.js';
+import type { PaymentEventRepository } from './paymentEventRepository.js';
+
+type EventRow = {
+  id: string;
+  provider: string;
+  provider_event_id: string;
+  order_id: string;
+  telegram_id: string;
+  supabase_user_id: string | null;
+  event_type: string;
+  amount: number;
+  currency: string;
+  plan: string;
+  period_days: number;
+  raw_payload: unknown;
+  processed_at: string | null;
+  created_at: string;
+};
+
+type SingleResult = Promise<{ data: EventRow | null; error: { message: string } | null }>;
+type ManyResult = Promise<{ data: EventRow[] | null; error: { message: string } | null }>;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const q = (client: SupabaseClient<Database>, table: string): any => client.from(table);
+
+const mapEvent = (row: EventRow): PaymentEvent => ({
+  id: row.id,
+  provider: 'telegram_stars',
+  providerEventId: row.provider_event_id,
+  orderId: row.order_id,
+  telegramId: row.telegram_id,
+  supabaseUserId: row.supabase_user_id ?? undefined,
+  eventType: row.event_type as PaymentEvent['eventType'],
+  amount: row.amount,
+  currency: 'XTR',
+  plan: row.plan as PaymentPlan,
+  periodDays: row.period_days,
+  rawPayload: row.raw_payload as PaymentEvent['rawPayload'],
+  processedAt: row.processed_at ? new Date(row.processed_at) : undefined,
+  createdAt: new Date(row.created_at),
+});
+
+export class SupabasePaymentEventRepository implements PaymentEventRepository {
+  constructor(private readonly client: SupabaseClient<Database>) {}
+
+  async findByProviderEventId(providerEventId: string): Promise<PaymentEvent | undefined> {
+    const { data, error } = await (q(this.client, 'payment_events')
+      .select('*')
+      .eq('provider_event_id', providerEventId)
+      .maybeSingle() as SingleResult);
+    if (error) throw new Error(`Payment event lookup failed: ${error.message}`);
+    return data ? mapEvent(data) : undefined;
+  }
+
+  async createEventIfAbsent(input: CreatePaymentEventInput): Promise<PaymentEvent> {
+    const now = input.now ?? new Date();
+    // Try to insert; if conflict on provider_event_id, return existing
+    const { data, error } = await (q(this.client, 'payment_events')
+      .upsert(
+        {
+          provider: 'telegram_stars',
+          provider_event_id: input.providerEventId,
+          order_id: input.orderId,
+          telegram_id: input.telegramId,
+          supabase_user_id: input.supabaseUserId ?? null,
+          event_type: input.eventType,
+          amount: input.amount,
+          currency: input.currency,
+          plan: input.plan,
+          period_days: input.periodDays,
+          raw_payload: input.rawPayload,
+          created_at: now.toISOString(),
+        },
+        { onConflict: 'provider_event_id', ignoreDuplicates: true },
+      )
+      .select('*')
+      .maybeSingle() as SingleResult);
+    if (error) throw new Error(`Payment event upsert failed: ${error.message}`);
+    if (data) return mapEvent(data);
+    // ignoreDuplicates returned no data — fetch existing
+    const existing = await this.findByProviderEventId(input.providerEventId);
+    if (!existing) throw new Error(`Payment event not found after upsert: ${input.providerEventId}`);
+    return existing;
+  }
+
+  async findByOrderId(orderId: string): Promise<PaymentEvent[]> {
+    const { data, error } = await (q(this.client, 'payment_events')
+      .select('*')
+      .eq('order_id', orderId) as ManyResult);
+    if (error) throw new Error(`Payment event lookup failed: ${error.message}`);
+    return (data ?? []).map(mapEvent);
+  }
+
+  async markProcessed(providerEventId: string, processedAt = new Date()): Promise<void> {
+    const { error } = await (q(this.client, 'payment_events')
+      .update({ processed_at: processedAt.toISOString() })
+      .eq('provider_event_id', providerEventId) as Promise<{
+      error: { message: string } | null;
+    }>);
+    if (error) throw new Error(`Payment event update failed: ${error.message}`);
+  }
+
+  async findLatestByTelegramId(telegramId: string): Promise<PaymentEvent | undefined> {
+    const { data, error } = await (q(this.client, 'payment_events')
+      .select('*')
+      .eq('telegram_id', telegramId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle() as SingleResult);
+    if (error) throw new Error(`Payment event lookup failed: ${error.message}`);
+    return data ? mapEvent(data) : undefined;
+  }
+
+  async recordEvent(_eventName: string): Promise<{ status: 'not_configured' }> {
+    return { status: 'not_configured' };
+  }
+}
