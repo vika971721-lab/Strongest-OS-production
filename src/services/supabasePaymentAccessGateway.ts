@@ -20,9 +20,7 @@ export class SupabasePaymentAccessGateway implements PaymentAccessGateway {
   private readonly accessStateService: DefaultAccessStateService;
 
   constructor(private readonly client: SupabaseClient<Database>) {
-    this.accessStateService = new DefaultAccessStateService(
-      new SupabaseAccessStateSource(client),
-    );
+    this.accessStateService = new DefaultAccessStateService(new SupabaseAccessStateSource(client));
   }
 
   async getAccessState(telegramId: string): Promise<UserAccessState> {
@@ -166,9 +164,7 @@ export class SupabasePaymentAccessGateway implements PaymentAccessGateway {
     return { expiresAt: newExpiresAt, firstPayment: isFirstPayment, applied: true };
   }
 
-  async getAccessSummary(
-    telegramId: string,
-  ): Promise<{ expiresAt?: Date; loginEmail?: string }> {
+  async getAccessSummary(telegramId: string): Promise<{ expiresAt?: Date; loginEmail?: string }> {
     const [userRes, subRes] = await Promise.all([
       q(this.client, 'bot_users')
         .select('login_email')
@@ -219,9 +215,8 @@ export class SupabasePaymentAccessGateway implements PaymentAccessGateway {
     const newExpiresAt = addDays(base, input.days);
 
     if (existing) {
-      const newStatus = existing.status === 'deleted' || existing.status === 'banned'
-        ? existing.status
-        : 'active';
+      const newStatus =
+        existing.status === 'deleted' || existing.status === 'banned' ? existing.status : 'active';
       const { error: updateErr } = await (q(this.client, 'subscriptions')
         .update({
           expires_at: newExpiresAt.toISOString(),

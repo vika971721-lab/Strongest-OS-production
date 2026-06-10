@@ -82,7 +82,8 @@ export class SupabasePaymentEventRepository implements PaymentEventRepository {
     if (data) return mapEvent(data);
     // ignoreDuplicates returned no data — fetch existing
     const existing = await this.findByProviderEventId(input.providerEventId);
-    if (!existing) throw new Error(`Payment event not found after upsert: ${input.providerEventId}`);
+    if (!existing)
+      throw new Error(`Payment event not found after upsert: ${input.providerEventId}`);
     return existing;
   }
 

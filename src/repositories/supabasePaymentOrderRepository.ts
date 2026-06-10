@@ -75,7 +75,8 @@ export class SupabasePaymentOrderRepository implements PaymentOrderRepository {
       })
       .select('*')
       .single() as SingleResult);
-    if (error || !data) throw new Error(`Failed to create payment order: ${error?.message ?? 'no data'}`);
+    if (error || !data)
+      throw new Error(`Failed to create payment order: ${error?.message ?? 'no data'}`);
     return mapOrder(data);
   }
 

@@ -345,7 +345,10 @@ export const processPaymentEvent = async (input: {
     };
     await input.eventRepository.createEventIfAbsent(audit);
   }
-  const account = await input.accessGateway.createOrGetAccount(input.order.telegramId, input.userInfo);
+  const account = await input.accessGateway.createOrGetAccount(
+    input.order.telegramId,
+    input.userInfo,
+  );
   if (account.created) logger.info({ telegramId: input.order.telegramId }, 'account_created');
   await input.orderRepository.attachSupabaseUser(input.order.orderId, account.supabaseUserId);
   const extended = await input.accessGateway.extendSubscription({
@@ -407,17 +410,13 @@ const successfulPaymentMessage = (input: {
     return `✅ Эта оплата уже была обработана.\n\nТекущий доступ активен до:\n${expires}`;
   }
   if (input.result.accountCreated && input.result.password) {
-    const appLine = input.appUrl
-      ? `\n🌐 Ссылка:\n${escapeTelegramHtml(input.appUrl)}\n`
-      : '';
+    const appLine = input.appUrl ? `\n🌐 Ссылка:\n${escapeTelegramHtml(input.appUrl)}\n` : '';
     return `🚀 Доступ активирован.\n\nStrongest OS запущена. Теперь у тебя есть система: квесты, цели, прогресс и дисциплина в одном месте.\n\nЗаходи, собирай день и прокачивай себя без хаоса.\n${appLine}\n🔐 Логин:\n${input.result.loginEmail ? escapeTelegramHtml(input.result.loginEmail) : 'уточняется'}\n\n🔑 Пароль:\n${escapeTelegramHtml(input.result.password)}\n\n📅 Доступ активен до:\n${expires}\n\n<b>Сохрани пароль.</b> Бот показывает его только один раз.\n\nЕсли потеряешь — создай новый через «Восстановить доступ».`;
   }
   if (input.order.plan === 'monthly_renewal') {
     return `⚡ Доступ продлён.\n\nДобавлено: <b>${input.order.periodDays} дней</b>\n\nНовая дата окончания:\n${expires}\n\nОставшиеся дни сохранены. Продолжай двигаться вперёд. 💪`;
   }
-  const appLine = input.appUrl
-    ? `\n🌐 Ссылка:\n${escapeTelegramHtml(input.appUrl)}\n`
-    : '';
+  const appLine = input.appUrl ? `\n🌐 Ссылка:\n${escapeTelegramHtml(input.appUrl)}\n` : '';
   return `🚀 Доступ активирован.\n${appLine}\n🔐 Логин:\n${input.result.loginEmail ? escapeTelegramHtml(input.result.loginEmail) : 'уточняется'}\n\n📅 Доступ активен до:\n${expires}\n\nЕсли потерял пароль — создай новый через «Восстановить доступ».`;
 };
 

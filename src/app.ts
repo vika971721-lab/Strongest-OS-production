@@ -104,23 +104,20 @@ export const createApplication = (env: AppEnv): Application => {
     scheduler,
   };
 
-  const bot = createBot(
-    env,
-    {
-      ...paymentDependencies,
-      scheduler,
-      ...(schedulerDependencies
-        ? {
-            subscriptionLifecycleRepository: schedulerDependencies.subscriptions,
-            notificationRepository: schedulerDependencies.notificationsRepository,
-          }
-        : {}),
-      systemStatus: {
-        isReady: () => state.ready && !state.shuttingDown,
-        supabaseClient: supabaseClient ?? undefined,
-      },
+  const bot = createBot(env, {
+    ...paymentDependencies,
+    scheduler,
+    ...(schedulerDependencies
+      ? {
+          subscriptionLifecycleRepository: schedulerDependencies.subscriptions,
+          notificationRepository: schedulerDependencies.notificationsRepository,
+        }
+      : {}),
+    systemStatus: {
+      isReady: () => state.ready && !state.shuttingDown,
+      supabaseClient: supabaseClient ?? undefined,
     },
-  );
+  });
   botRef.current = bot;
   state.compositionReady = true;
 
