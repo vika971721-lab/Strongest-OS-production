@@ -121,6 +121,7 @@ const gateway = (created = false): PaymentAccessGateway => ({
     );
   }),
   extendSubscription: vi.fn(),
+  ensureBotUser: vi.fn().mockResolvedValue(undefined),
   getAccessSummary: vi.fn(),
   adminExtend: vi.fn(),
 });

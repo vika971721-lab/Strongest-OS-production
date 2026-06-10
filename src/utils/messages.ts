@@ -93,7 +93,7 @@ export const buildAccessMessage = (
 };
 
 const firstPlan = (pricing: PricingConfig): string =>
-  `🚀 Первый период Strongest OS\n\nСрок: ${pricing.firstPeriodDays} дней\nСтоимость: ${pricing.firstPeriodStars} Telegram Stars\n\nПосле оплаты бот автоматически создаст аккаунт и выдаст логин с паролем.`;
+  `🚀 Первый период Strongest OS\n\nСрок: ${pricing.firstPeriodDays} дней\nСтоимость: ${pricing.firstPeriodStars} Telegram Stars\n\nПосле оплаты бот создаст аккаунт и выдаст логин с паролем.\n\nЗапускай систему, собирай день и двигайся без хаоса.`;
 
 const renewalPlan = (pricing: PricingConfig): string =>
   `⚡ Продление Strongest OS\n\nСрок: +${pricing.renewalPeriodDays} дней\nСтоимость: ${pricing.renewalPeriodStars} Telegram Stars\n\nНовые дни добавятся к текущему сроку. Оставшееся время не сгорает.`;

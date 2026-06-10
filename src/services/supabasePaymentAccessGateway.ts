@@ -54,6 +54,40 @@ export class SupabasePaymentAccessGateway implements PaymentAccessGateway {
     return this.accessStateService.getUserAccessState(telegramId);
   }
 
+  async ensureBotUser(
+    telegramId: string,
+    userInfo?: { username?: string; firstName?: string; lastName?: string },
+  ): Promise<void> {
+    const now = new Date();
+    // Try to insert a new row; if the row already exists, ignoreDuplicates keeps it untouched.
+    // Then update last_seen_at and name fields regardless (best-effort, non-critical).
+    const { error: insertErr } = await (this.db.from('bot_users').upsert(
+      {
+        telegram_id: telegramId,
+        telegram_username: userInfo?.username ?? null,
+        telegram_first_name: userInfo?.firstName ?? null,
+        telegram_last_name: userInfo?.lastName ?? null,
+        first_started_at: now.toISOString(),
+        last_seen_at: now.toISOString(),
+        created_at: now.toISOString(),
+        updated_at: now.toISOString(),
+      },
+      { onConflict: 'telegram_id', ignoreDuplicates: true },
+    ) as ER);
+    if (insertErr) throw new Error(`bot_users ensure failed: ${insertErr.message}`);
+
+    // Best-effort update of last_seen_at and name on existing rows; ignore errors.
+    await (
+      this.db.from('bot_users').update({
+        last_seen_at: now.toISOString(),
+        updated_at: now.toISOString(),
+        ...(userInfo?.username !== undefined ? { telegram_username: userInfo.username } : {}),
+        ...(userInfo?.firstName !== undefined ? { telegram_first_name: userInfo.firstName } : {}),
+        ...(userInfo?.lastName !== undefined ? { telegram_last_name: userInfo.lastName } : {}),
+      }) as { eq(col: string, val: string): ER }
+    ).eq('telegram_id', telegramId);
+  }
+
   async createOrGetAccount(
     telegramId: string,
     userInfo?: { username?: string; firstName?: string; lastName?: string },

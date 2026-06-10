@@ -40,6 +40,10 @@ export interface PlanConfig {
 
 export interface PaymentAccessGateway {
   getAccessState(telegramId: string): Promise<UserAccessState>;
+  ensureBotUser(
+    telegramId: string,
+    userInfo?: { username?: string; firstName?: string; lastName?: string },
+  ): Promise<void>;
   createOrGetAccount(
     telegramId: string,
     userInfo?: { username?: string; firstName?: string; lastName?: string },
@@ -70,6 +74,13 @@ export class NotConfiguredPaymentAccessGateway implements PaymentAccessGateway {
   async getAccessState(telegramId: string): Promise<UserAccessState> {
     await Promise.resolve();
     return { kind: 'telegram_registered', telegramId, trialUsed: false };
+  }
+
+  ensureBotUser(
+    _telegramId: string,
+    _userInfo?: { username?: string; firstName?: string; lastName?: string },
+  ): Promise<void> {
+    return Promise.resolve();
   }
 
   async createOrGetAccount(
@@ -440,6 +451,20 @@ export const handleCreatePaymentInvoice = async (input: {
   }
   const telegramId = input.ctx.state.user?.telegramId;
   if (!telegramId || !input.ctx.chat) return;
+
+  const userInfo = {
+    ...(input.ctx.state.user?.username !== undefined
+      ? { username: input.ctx.state.user.username }
+      : {}),
+    ...(input.ctx.state.user?.firstName !== undefined
+      ? { firstName: input.ctx.state.user.firstName }
+      : {}),
+    ...(input.ctx.state.user?.lastName !== undefined
+      ? { lastName: input.ctx.state.user.lastName }
+      : {}),
+  };
+  await input.accessGateway.ensureBotUser(telegramId, userInfo);
+
   const ensured = await ensurePaymentOrder({
     telegramId,
     pricing: input.env.pricing,
