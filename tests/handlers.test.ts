@@ -83,7 +83,7 @@ describe('handlers', () => {
       accessStateProvider({ kind: 'active', status: 'active', telegramId: '1', trialUsed: true }),
     );
     expect(ctx.reply).toHaveBeenCalledWith(
-      expect.stringContaining('Ваш доступ активен'),
+      expect.stringContaining('Доступ активен'),
       expect.any(Object),
     );
     expect(ctx.reply).not.toHaveBeenCalledWith(
