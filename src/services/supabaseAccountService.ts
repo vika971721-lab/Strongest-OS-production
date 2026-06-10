@@ -4,35 +4,42 @@ import type { Database } from '../types/database.js';
 import type { AccountService, PasswordResetResult } from './accountService.js';
 import { logger } from '../utils/logger.js';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const q = (client: SupabaseClient<Database>, table: string): any => client.from(table);
-
-const generatePassword = (): string => randomBytes(16).toString('base64url').slice(0, 20);
-
 type BotUserRow = {
   supabase_user_id: string | null;
   login_email: string | null;
 };
 
-export class SupabaseAccountService implements AccountService {
-  constructor(private readonly client: SupabaseClient<Database>) {}
+type QR<T> = Promise<{ data: T | null; error: { message: string } | null }>;
 
-  async startPasswordRestore(
+interface SupabaseLike {
+  from(table: string): {
+    select(columns?: string): unknown;
+  };
+}
+
+const generatePassword = (): string => randomBytes(16).toString('base64url').slice(0, 20);
+
+export class SupabaseAccountService implements AccountService {
+  private readonly db: SupabaseLike;
+
+  constructor(private readonly client: SupabaseClient<Database>) {
+    this.db = client;
+  }
+
+  startPasswordRestore(
     _telegramId: string,
   ): Promise<{ status: 'not_configured'; message: string }> {
-    await Promise.resolve();
-    // Return not_configured to trigger confirmation UI — actual reset is in resetPassword
-    return { status: 'not_configured', message: 'ok' };
+    return Promise.resolve({ status: 'not_configured', message: 'ok' });
   }
 
   async resetPassword(telegramId: string): Promise<PasswordResetResult> {
-    const { data: user, error } = await (q(this.client, 'bot_users')
-      .select('supabase_user_id, login_email')
+    const { data: user, error } = await (
+      this.db.from('bot_users').select('supabase_user_id, login_email') as {
+        eq(col: string, val: string): { maybeSingle(): QR<BotUserRow> };
+      }
+    )
       .eq('telegram_id', telegramId)
-      .maybeSingle() as Promise<{
-      data: BotUserRow | null;
-      error: { message: string } | null;
-    }>);
+      .maybeSingle();
 
     if (error) throw new Error(`bot_users lookup failed: ${error.message}`);
     if (!user?.supabase_user_id || !user.login_email) {

@@ -20,11 +20,16 @@ type EventRow = {
   created_at: string;
 };
 
-type SingleResult = Promise<{ data: EventRow | null; error: { message: string } | null }>;
-type ManyResult = Promise<{ data: EventRow[] | null; error: { message: string } | null }>;
+type QR<T> = Promise<{ data: T | null; error: { message: string } | null }>;
+type ER = Promise<{ data: null; error: { message: string } | null }>;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const q = (client: SupabaseClient<Database>, table: string): any => client.from(table);
+interface SupabaseLike {
+  from(table: string): {
+    select(columns?: string): unknown;
+    update(values: unknown): unknown;
+    upsert(values: unknown, opts?: unknown): unknown;
+  };
+}
 
 const mapEvent = (row: EventRow): PaymentEvent => ({
   id: row.id,
@@ -44,22 +49,28 @@ const mapEvent = (row: EventRow): PaymentEvent => ({
 });
 
 export class SupabasePaymentEventRepository implements PaymentEventRepository {
-  constructor(private readonly client: SupabaseClient<Database>) {}
+  private readonly db: SupabaseLike;
+
+  constructor(client: SupabaseClient<Database>) {
+    this.db = client;
+  }
 
   async findByProviderEventId(providerEventId: string): Promise<PaymentEvent | undefined> {
-    const { data, error } = await (q(this.client, 'payment_events')
-      .select('*')
+    const { data, error } = await (
+      this.db.from('payment_events').select('*') as {
+        eq(col: string, val: string): { maybeSingle(): QR<EventRow> };
+      }
+    )
       .eq('provider_event_id', providerEventId)
-      .maybeSingle() as SingleResult);
+      .maybeSingle();
     if (error) throw new Error(`Payment event lookup failed: ${error.message}`);
     return data ? mapEvent(data) : undefined;
   }
 
   async createEventIfAbsent(input: CreatePaymentEventInput): Promise<PaymentEvent> {
     const now = input.now ?? new Date();
-    // Try to insert; if conflict on provider_event_id, return existing
-    const { data, error } = await (q(this.client, 'payment_events')
-      .upsert(
+    const { data, error } = await (
+      this.db.from('payment_events').upsert(
         {
           provider: 'telegram_stars',
           provider_event_id: input.providerEventId,
@@ -75,12 +86,13 @@ export class SupabasePaymentEventRepository implements PaymentEventRepository {
           created_at: now.toISOString(),
         },
         { onConflict: 'provider_event_id', ignoreDuplicates: true },
-      )
+      ) as { select(cols?: string): { maybeSingle(): QR<EventRow> } }
+    )
       .select('*')
-      .maybeSingle() as SingleResult);
+      .maybeSingle();
     if (error) throw new Error(`Payment event upsert failed: ${error.message}`);
     if (data) return mapEvent(data);
-    // ignoreDuplicates returned no data — fetch existing
+    // ignoreDuplicates returned no data — fetch the existing row
     const existing = await this.findByProviderEventId(input.providerEventId);
     if (!existing)
       throw new Error(`Payment event not found after upsert: ${input.providerEventId}`);
@@ -88,34 +100,49 @@ export class SupabasePaymentEventRepository implements PaymentEventRepository {
   }
 
   async findByOrderId(orderId: string): Promise<PaymentEvent[]> {
-    const { data, error } = await (q(this.client, 'payment_events')
-      .select('*')
-      .eq('order_id', orderId) as ManyResult);
+    const { data, error } = await (
+      this.db.from('payment_events').select('*') as {
+        eq(col: string, val: string): QR<EventRow[]>;
+      }
+    ).eq('order_id', orderId);
     if (error) throw new Error(`Payment event lookup failed: ${error.message}`);
     return (data ?? []).map(mapEvent);
   }
 
   async markProcessed(providerEventId: string, processedAt = new Date()): Promise<void> {
-    const { error } = await (q(this.client, 'payment_events')
-      .update({ processed_at: processedAt.toISOString() })
-      .eq('provider_event_id', providerEventId) as Promise<{
-      error: { message: string } | null;
-    }>);
+    const { error } = await (
+      this.db.from('payment_events').update({ processed_at: processedAt.toISOString() }) as {
+        eq(col: string, val: string): ER;
+      }
+    ).eq('provider_event_id', providerEventId);
     if (error) throw new Error(`Payment event update failed: ${error.message}`);
   }
 
   async findLatestByTelegramId(telegramId: string): Promise<PaymentEvent | undefined> {
-    const { data, error } = await (q(this.client, 'payment_events')
-      .select('*')
+    const { data, error } = await (
+      this.db.from('payment_events').select('*') as {
+        eq(
+          col: string,
+          val: string,
+        ): {
+          order(
+            col: string,
+            opts?: { ascending?: boolean },
+          ): {
+            limit(n: number): { maybeSingle(): QR<EventRow> };
+          };
+        };
+      }
+    )
       .eq('telegram_id', telegramId)
       .order('created_at', { ascending: false })
       .limit(1)
-      .maybeSingle() as SingleResult);
+      .maybeSingle();
     if (error) throw new Error(`Payment event lookup failed: ${error.message}`);
     return data ? mapEvent(data) : undefined;
   }
 
-  async recordEvent(_eventName: string): Promise<{ status: 'not_configured' }> {
-    return { status: 'not_configured' };
+  recordEvent(_eventName: string): Promise<{ status: 'not_configured' }> {
+    return Promise.resolve({ status: 'not_configured' });
   }
 }

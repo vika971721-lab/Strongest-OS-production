@@ -9,17 +9,44 @@ import { SupabaseAccessStateSource } from './supabaseAccessStateSource.js';
 import { addDays } from './paymentFlow.js';
 import { logger } from '../utils/logger.js';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const q = (client: SupabaseClient<Database>, table: string): any => client.from(table);
+type ER = Promise<{ data: null; error: { message: string } | null }>;
+
+type SubRow = {
+  id: string;
+  status: string;
+  expires_at: string | null;
+  trial_used: boolean | null;
+  first_payment_at: string | null;
+};
+
+type SubAdminRow = SubRow & {
+  supabase_user_id: string | null;
+};
+
+type BotUserExistingRow = {
+  supabase_user_id: string | null;
+  login_email: string | null;
+};
+
+type QR<T> = Promise<{ data: T | null; error: { message: string } | null }>;
+
+interface SupabaseLike {
+  from(table: string): {
+    select(columns?: string): unknown;
+    insert(values: unknown): unknown;
+    update(values: unknown): unknown;
+    upsert(values: unknown, opts?: unknown): unknown;
+  };
+}
 
 const generatePassword = (): string => randomBytes(16).toString('base64url').slice(0, 20);
 
-type VoidResult = Promise<{ error: { message: string } | null }>;
-
 export class SupabasePaymentAccessGateway implements PaymentAccessGateway {
+  private readonly db: SupabaseLike;
   private readonly accessStateService: DefaultAccessStateService;
 
   constructor(private readonly client: SupabaseClient<Database>) {
+    this.db = client;
     this.accessStateService = new DefaultAccessStateService(new SupabaseAccessStateSource(client));
   }
 
@@ -36,28 +63,28 @@ export class SupabasePaymentAccessGateway implements PaymentAccessGateway {
     created: boolean;
     generatedPassword?: string;
   }> {
-    const { data: existing, error: lookupErr } = await (q(this.client, 'bot_users')
-      .select('supabase_user_id, login_email')
+    const { data: existing, error: lookupErr } = await (
+      this.db.from('bot_users').select('supabase_user_id, login_email') as {
+        eq(col: string, val: string): { maybeSingle(): QR<BotUserExistingRow> };
+      }
+    )
       .eq('telegram_id', telegramId)
-      .maybeSingle() as Promise<{
-      data: { supabase_user_id: string | null; login_email: string | null } | null;
-      error: { message: string } | null;
-    }>);
+      .maybeSingle();
     if (lookupErr) throw new Error(`bot_users lookup failed: ${lookupErr.message}`);
 
     const now = new Date();
 
     if (existing?.supabase_user_id && existing.login_email) {
-      // Update last_seen and optional user info
-      await (q(this.client, 'bot_users')
-        .update({
+      // Best-effort update of last_seen_at; non-critical, ignore error
+      await (
+        this.db.from('bot_users').update({
           last_seen_at: now.toISOString(),
           updated_at: now.toISOString(),
           ...(userInfo?.username !== undefined ? { telegram_username: userInfo.username } : {}),
           ...(userInfo?.firstName !== undefined ? { telegram_first_name: userInfo.firstName } : {}),
           ...(userInfo?.lastName !== undefined ? { telegram_last_name: userInfo.lastName } : {}),
-        })
-        .eq('telegram_id', telegramId) as VoidResult);
+        }) as { eq(col: string, val: string): ER }
+      ).eq('telegram_id', telegramId);
 
       return {
         supabaseUserId: existing.supabase_user_id,
@@ -66,7 +93,6 @@ export class SupabasePaymentAccessGateway implements PaymentAccessGateway {
       };
     }
 
-    // Create new Supabase Auth user
     const loginEmail = `tg_${telegramId}@strongest.local`;
     const password = generatePassword();
 
@@ -80,7 +106,7 @@ export class SupabasePaymentAccessGateway implements PaymentAccessGateway {
     }
     const supabaseUserId = authData.user.id;
 
-    const { error: upsertErr } = await (q(this.client, 'bot_users').upsert(
+    const { error: upsertErr } = await (this.db.from('bot_users').upsert(
       {
         telegram_id: telegramId,
         telegram_username: userInfo?.username ?? null,
@@ -94,7 +120,7 @@ export class SupabasePaymentAccessGateway implements PaymentAccessGateway {
         updated_at: now.toISOString(),
       },
       { onConflict: 'telegram_id' },
-    ) as VoidResult);
+    ) as ER);
     if (upsertErr) throw new Error(`bot_users upsert failed: ${upsertErr.message}`);
 
     logger.info({ telegramId, supabaseUserId }, 'supabase_account_created');
@@ -109,19 +135,15 @@ export class SupabasePaymentAccessGateway implements PaymentAccessGateway {
     paymentEventId: string;
     now: Date;
   }): Promise<{ expiresAt: Date; firstPayment: boolean; applied: boolean }> {
-    const { data: existing, error: lookupErr } = await (q(this.client, 'subscriptions')
-      .select('id, status, expires_at, trial_used, first_payment_at')
+    const { data: existing, error: lookupErr } = await (
+      this.db
+        .from('subscriptions')
+        .select('id, status, expires_at, trial_used, first_payment_at') as {
+        eq(col: string, val: string): { maybeSingle(): QR<SubRow> };
+      }
+    )
       .eq('telegram_id', input.telegramId)
-      .maybeSingle() as Promise<{
-      data: {
-        id: string;
-        status: string;
-        expires_at: string | null;
-        trial_used: boolean | null;
-        first_payment_at: string | null;
-      } | null;
-      error: { message: string } | null;
-    }>);
+      .maybeSingle();
     if (lookupErr) throw new Error(`Subscription lookup failed: ${lookupErr.message}`);
 
     if (existing?.status === 'banned' || existing?.status === 'deleted') {
@@ -136,7 +158,7 @@ export class SupabasePaymentAccessGateway implements PaymentAccessGateway {
     const isFirstPayment = !existing?.first_payment_at;
     const trialUsed = Boolean(existing?.trial_used) || input.plan === 'first_month';
 
-    const { error: upsertErr } = await (q(this.client, 'subscriptions').upsert(
+    const { error: upsertErr } = await (this.db.from('subscriptions').upsert(
       {
         telegram_id: input.telegramId,
         supabase_user_id: input.supabaseUserId,
@@ -158,7 +180,7 @@ export class SupabasePaymentAccessGateway implements PaymentAccessGateway {
         ...(existing ? {} : { created_at: now.toISOString() }),
       },
       { onConflict: 'telegram_id' },
-    ) as VoidResult);
+    ) as ER);
     if (upsertErr) throw new Error(`Subscription upsert failed: ${upsertErr.message}`);
 
     return { expiresAt: newExpiresAt, firstPayment: isFirstPayment, applied: true };
@@ -166,20 +188,30 @@ export class SupabasePaymentAccessGateway implements PaymentAccessGateway {
 
   async getAccessSummary(telegramId: string): Promise<{ expiresAt?: Date; loginEmail?: string }> {
     const [userRes, subRes] = await Promise.all([
-      q(this.client, 'bot_users')
-        .select('login_email')
+      (
+        this.db.from('bot_users').select('login_email') as {
+          eq(
+            col: string,
+            val: string,
+          ): {
+            maybeSingle(): QR<{ login_email: string | null }>;
+          };
+        }
+      )
         .eq('telegram_id', telegramId)
-        .maybeSingle() as Promise<{
-        data: { login_email: string | null } | null;
-        error: { message: string } | null;
-      }>,
-      q(this.client, 'subscriptions')
-        .select('expires_at')
+        .maybeSingle(),
+      (
+        this.db.from('subscriptions').select('expires_at') as {
+          eq(
+            col: string,
+            val: string,
+          ): {
+            maybeSingle(): QR<{ expires_at: string | null }>;
+          };
+        }
+      )
         .eq('telegram_id', telegramId)
-        .maybeSingle() as Promise<{
-        data: { expires_at: string | null } | null;
-        error: { message: string } | null;
-      }>,
+        .maybeSingle(),
     ]);
 
     const result: { expiresAt?: Date; loginEmail?: string } = {};
@@ -194,20 +226,15 @@ export class SupabasePaymentAccessGateway implements PaymentAccessGateway {
     reason: string;
     now: Date;
   }): Promise<{ expiresAt: Date }> {
-    const { data: existing, error } = await (q(this.client, 'subscriptions')
-      .select('id, supabase_user_id, expires_at, status, trial_used, first_payment_at')
+    const { data: existing, error } = await (
+      this.db
+        .from('subscriptions')
+        .select('id, supabase_user_id, expires_at, status, trial_used, first_payment_at') as {
+        eq(col: string, val: string): { maybeSingle(): QR<SubAdminRow> };
+      }
+    )
       .eq('telegram_id', input.telegramId)
-      .maybeSingle() as Promise<{
-      data: {
-        id: string;
-        supabase_user_id: string | null;
-        expires_at: string | null;
-        status: string;
-        trial_used: boolean | null;
-        first_payment_at: string | null;
-      } | null;
-      error: { message: string } | null;
-    }>);
+      .maybeSingle();
     if (error) throw new Error(`Subscription lookup failed: ${error.message}`);
 
     const currentExpires = existing?.expires_at ? new Date(existing.expires_at) : null;
@@ -217,24 +244,30 @@ export class SupabasePaymentAccessGateway implements PaymentAccessGateway {
     if (existing) {
       const newStatus =
         existing.status === 'deleted' || existing.status === 'banned' ? existing.status : 'active';
-      const { error: updateErr } = await (q(this.client, 'subscriptions')
-        .update({
+      const { error: updateErr } = await (
+        this.db.from('subscriptions').update({
           expires_at: newExpiresAt.toISOString(),
           current_period_end: newExpiresAt.toISOString(),
           status: newStatus,
           updated_at: input.now.toISOString(),
-        })
-        .eq('telegram_id', input.telegramId) as VoidResult);
+        }) as { eq(col: string, val: string): ER }
+      ).eq('telegram_id', input.telegramId);
       if (updateErr) throw new Error(`Admin extend failed: ${updateErr.message}`);
     } else {
-      const { data: botUser } = await (q(this.client, 'bot_users')
-        .select('supabase_user_id')
+      const { data: botUser } = await (
+        this.db.from('bot_users').select('supabase_user_id') as {
+          eq(
+            col: string,
+            val: string,
+          ): {
+            maybeSingle(): QR<{ supabase_user_id: string | null }>;
+          };
+        }
+      )
         .eq('telegram_id', input.telegramId)
-        .maybeSingle() as Promise<{
-        data: { supabase_user_id: string | null } | null;
-        error: { message: string } | null;
-      }>);
-      const { error: insertErr } = await (q(this.client, 'subscriptions').insert({
+        .maybeSingle();
+
+      const { error: insertErr } = await (this.db.from('subscriptions').insert({
         telegram_id: input.telegramId,
         supabase_user_id: botUser?.supabase_user_id ?? null,
         status: 'active',
@@ -247,7 +280,7 @@ export class SupabasePaymentAccessGateway implements PaymentAccessGateway {
         last_payment_at: input.now.toISOString(),
         created_at: input.now.toISOString(),
         updated_at: input.now.toISOString(),
-      }) as VoidResult);
+      }) as ER);
       if (insertErr) throw new Error(`Admin extend insert failed: ${insertErr.message}`);
     }
 

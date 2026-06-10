@@ -28,10 +28,26 @@ type OrderRow = {
   raw_payload: unknown;
 };
 
-type SingleResult = Promise<{ data: OrderRow | null; error: { message: string } | null }>;
+type QR = Promise<{ data: OrderRow | null; error: { message: string } | null }>;
+type ER = Promise<{ data: null; error: { message: string } | null }>;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const q = (client: SupabaseClient<Database>, table: string): any => client.from(table);
+type SelectChain = {
+  eq(col: string, val: string): SelectChain;
+  in(col: string, vals: string[]): SelectChain;
+  gte(col: string, val: string): SelectChain;
+  order(col: string, opts?: { ascending?: boolean }): SelectChain;
+  limit(n: number): SelectChain;
+  maybeSingle(): QR;
+  single(): QR;
+};
+
+interface SupabaseLike {
+  from(table: string): {
+    select(columns?: string): unknown;
+    insert(values: unknown): unknown;
+    update(values: unknown): unknown;
+  };
+}
 
 const mapOrder = (row: OrderRow): PaymentOrder => ({
   id: row.id,
@@ -53,14 +69,18 @@ const mapOrder = (row: OrderRow): PaymentOrder => ({
 });
 
 export class SupabasePaymentOrderRepository implements PaymentOrderRepository {
-  constructor(private readonly client: SupabaseClient<Database>) {}
+  private readonly db: SupabaseLike;
+
+  constructor(client: SupabaseClient<Database>) {
+    this.db = client;
+  }
 
   async createOrder(input: CreatePaymentOrderInput): Promise<PaymentOrder> {
     const now = input.now ?? new Date();
     const orderId = createOpaqueToken('ord');
     const providerInvoicePayload = createOpaqueToken('xtr');
-    const { data, error } = await (q(this.client, 'payment_orders')
-      .insert({
+    const { data, error } = await (
+      this.db.from('payment_orders').insert({
         order_id: orderId,
         telegram_id: input.telegramId,
         supabase_user_id: input.supabaseUserId ?? null,
@@ -72,39 +92,59 @@ export class SupabasePaymentOrderRepository implements PaymentOrderRepository {
         period_days: input.periodDays,
         status: 'created',
         created_at: now.toISOString(),
-      })
+      }) as { select(cols?: string): { single(): QR } }
+    )
       .select('*')
-      .single() as SingleResult);
+      .single();
     if (error || !data)
       throw new Error(`Failed to create payment order: ${error?.message ?? 'no data'}`);
     return mapOrder(data);
   }
 
   async findByOrderId(orderId: string): Promise<PaymentOrder | undefined> {
-    const { data, error } = await (q(this.client, 'payment_orders')
-      .select('*')
+    const { data, error } = await (
+      this.db.from('payment_orders').select('*') as {
+        eq(col: string, val: string): { maybeSingle(): QR };
+      }
+    )
       .eq('order_id', orderId)
-      .maybeSingle() as SingleResult);
+      .maybeSingle();
     if (error) throw new Error(`Payment order lookup failed: ${error.message}`);
     return data ? mapOrder(data) : undefined;
   }
 
   async findByInvoicePayload(payload: string): Promise<PaymentOrder | undefined> {
-    const { data, error } = await (q(this.client, 'payment_orders')
-      .select('*')
+    const { data, error } = await (
+      this.db.from('payment_orders').select('*') as {
+        eq(col: string, val: string): { maybeSingle(): QR };
+      }
+    )
       .eq('provider_invoice_payload', payload)
-      .maybeSingle() as SingleResult);
+      .maybeSingle();
     if (error) throw new Error(`Payment order lookup failed: ${error.message}`);
     return data ? mapOrder(data) : undefined;
   }
 
   async findLatestByTelegramId(telegramId: string): Promise<PaymentOrder | undefined> {
-    const { data, error } = await (q(this.client, 'payment_orders')
-      .select('*')
+    const { data, error } = await (
+      this.db.from('payment_orders').select('*') as {
+        eq(
+          col: string,
+          val: string,
+        ): {
+          order(
+            col: string,
+            opts?: { ascending?: boolean },
+          ): {
+            limit(n: number): { maybeSingle(): QR };
+          };
+        };
+      }
+    )
       .eq('telegram_id', telegramId)
       .order('created_at', { ascending: false })
       .limit(1)
-      .maybeSingle() as SingleResult);
+      .maybeSingle();
     if (error) throw new Error(`Payment order lookup failed: ${error.message}`);
     return data ? mapOrder(data) : undefined;
   }
@@ -116,15 +156,14 @@ export class SupabasePaymentOrderRepository implements PaymentOrderRepository {
     now = new Date(),
   ): Promise<PaymentOrder | undefined> {
     const since = new Date(now.getTime() - ttlMinutes * 60 * 1000).toISOString();
-    const { data, error } = await (q(this.client, 'payment_orders')
-      .select('*')
+    const { data, error } = await (this.db.from('payment_orders').select('*') as SelectChain)
       .eq('telegram_id', telegramId)
       .eq('plan', plan)
       .in('status', ['created', 'pending'])
       .gte('created_at', since)
       .order('created_at', { ascending: false })
       .limit(1)
-      .maybeSingle() as SingleResult);
+      .maybeSingle();
     if (error) throw new Error(`Payment order lookup failed: ${error.message}`);
     return data ? mapOrder(data) : undefined;
   }
@@ -156,10 +195,13 @@ export class SupabasePaymentOrderRepository implements PaymentOrderRepository {
   }
 
   async markExpired(orderId: string, _expiredAt = new Date()): Promise<void> {
-    const { error } = await (q(this.client, 'payment_orders')
-      .update({ status: 'expired' })
+    const { error } = await (
+      this.db.from('payment_orders').update({ status: 'expired' }) as {
+        eq(col: string, val: string): { neq(col: string, val: string): ER };
+      }
+    )
       .eq('order_id', orderId)
-      .neq('status', 'paid') as Promise<{ error: { message: string } | null }>);
+      .neq('status', 'paid');
     if (error) throw new Error(`Payment order update failed: ${error.message}`);
   }
 
@@ -172,9 +214,11 @@ export class SupabasePaymentOrderRepository implements PaymentOrderRepository {
   }
 
   private async patch(orderId: string, values: Record<string, unknown>): Promise<void> {
-    const { error } = await (q(this.client, 'payment_orders')
-      .update(values)
-      .eq('order_id', orderId) as Promise<{ error: { message: string } | null }>);
+    const { error } = await (
+      this.db.from('payment_orders').update(values) as {
+        eq(col: string, val: string): ER;
+      }
+    ).eq('order_id', orderId);
     if (error) throw new Error(`Payment order update failed: ${error.message}`);
   }
 }

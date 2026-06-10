@@ -16,28 +16,39 @@ type SubscriptionRow = {
   delete_after: string | null;
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const q = (client: SupabaseClient<Database>, table: string): any => client.from(table);
+type QR<T> = Promise<{ data: T | null; error: { message: string } | null }>;
+
+interface SupabaseLike {
+  from(table: string): {
+    select(columns?: string): unknown;
+  };
+}
 
 export class SupabaseAccessStateSource implements AccessStateSource {
-  constructor(private readonly client: SupabaseClient<Database>) {}
+  private readonly db: SupabaseLike;
+
+  constructor(client: SupabaseClient<Database>) {
+    this.db = client;
+  }
 
   async findAccessStateRecord(telegramId: string): Promise<AccessStateSourceRecord | undefined> {
     const [userRes, subRes] = await Promise.all([
-      q(this.client, 'bot_users')
-        .select('telegram_id, supabase_user_id, login_email')
+      (
+        this.db.from('bot_users').select('telegram_id, supabase_user_id, login_email') as {
+          eq(col: string, val: string): { maybeSingle(): QR<BotUserRow> };
+        }
+      )
         .eq('telegram_id', telegramId)
-        .maybeSingle() as Promise<{
-        data: BotUserRow | null;
-        error: { message: string } | null;
-      }>,
-      q(this.client, 'subscriptions')
-        .select('telegram_id, status, trial_used, expires_at, delete_after')
+        .maybeSingle(),
+      (
+        this.db
+          .from('subscriptions')
+          .select('telegram_id, status, trial_used, expires_at, delete_after') as {
+          eq(col: string, val: string): { maybeSingle(): QR<SubscriptionRow> };
+        }
+      )
         .eq('telegram_id', telegramId)
-        .maybeSingle() as Promise<{
-        data: SubscriptionRow | null;
-        error: { message: string } | null;
-      }>,
+        .maybeSingle(),
     ]);
 
     if (userRes.error) throw new Error(`bot_users lookup failed: ${userRes.error.message}`);
