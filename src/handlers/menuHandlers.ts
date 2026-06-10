@@ -94,14 +94,14 @@ export const handleCouponStart = async (ctx: BotContext, deps: UiDependencies): 
   const state = await deps.accessStateProvider.getUserAccessState(telegramId);
   if (state.kind === 'banned') {
     await ctx.reply(
-      'Активация промокода недоступна, пока аккаунт ограничен.\n\nОбратитесь в поддержку.',
+      '⛔ Активация промокода недоступна — аккаунт ограничен.\n\nОбратись в поддержку.',
       createSupportKeyboard(deps.env.supportUsername),
     );
     return;
   }
   if (state.kind === 'deleted') {
     await ctx.reply(
-      'Данные аккаунта были удалены.\n\nОбратитесь в поддержку.',
+      'Данные аккаунта удалены.\n\nОбратись в поддержку.',
       createSupportKeyboard(deps.env.supportUsername),
     );
     return;

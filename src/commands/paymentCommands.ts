@@ -11,7 +11,7 @@ import { MESSAGES } from '../utils/messages.js';
 
 export const handlePaySupportCommand = async (ctx: BotContext, env: AppEnv): Promise<void> => {
   await ctx.reply(
-    'Если Stars были списаны, но доступ не появился:\n\n1. Нажмите “Проверить последнюю оплату”.\n2. Не оплачивайте повторно.\n3. Если доступ не появился, напишите в поддержку.',
+    'Если Stars были списаны, но доступ не появился:\n\n1. Нажми «Проверить последнюю оплату».\n2. Не оплачивай повторно.\n3. Если доступ не появился — напиши в поддержку.',
     createPaymentSupportKeyboard(env.supportUsername),
   );
 };

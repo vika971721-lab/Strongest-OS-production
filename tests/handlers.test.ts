@@ -55,7 +55,7 @@ describe('handlers', () => {
     const ctx = createTextCtx('unknown');
     await handleTextMessage(ctx, deps());
     expect(ctx.reply).toHaveBeenCalledWith(
-      'Используйте кнопки меню, чтобы выбрать действие.',
+      'Используйте кнопки меню для навигации.',
       expect.any(Object),
     );
   });

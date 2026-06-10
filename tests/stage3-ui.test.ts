@@ -52,7 +52,7 @@ describe('stage 3 ui', () => {
       pricing,
     );
     expect(text).toContain('Продление Strongest OS');
-    expect(text).toContain('ещё 32 дней');
+    expect(text).toContain('+32 дней');
     expect(text).toContain('222 Telegram Stars');
     expect(text).toContain('Оставшееся время не сгорает');
   });
