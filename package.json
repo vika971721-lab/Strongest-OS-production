@@ -16,7 +16,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "start:polling": "BOT_MODE=polling node dist/index.js",
+    "start:webhook": "BOT_MODE=webhook NODE_ENV=production node dist/index.js",
+    "webhook:set": "tsx src/scripts/webhook.ts set",
+    "webhook:delete": "tsx src/scripts/webhook.ts delete",
+    "webhook:info": "tsx src/scripts/webhook.ts info"
   },
   "dependencies": {
     "@supabase/supabase-js": "latest",

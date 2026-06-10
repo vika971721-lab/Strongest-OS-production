@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+.git
+.github
+node_modules
+dist
+coverage
+*.log
+.DS_Store
+.idea
+.vscode
+*.swp
+*.tmp
+tests
+README.md
