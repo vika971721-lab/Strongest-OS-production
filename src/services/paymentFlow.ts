@@ -493,7 +493,7 @@ const successfulPaymentMessage = (input: {
 export const createPaymentResultKeyboard = (appUrl?: string) => {
   const rows = [];
   if (appUrl) rows.push([Markup.button.url('Открыть Strongest OS', appUrl)]);
-  rows.push([Markup.button.callback('Мой доступ', CALLBACK_DATA.navAccess)]);
+  rows.push([Markup.button.callback('👤 Мой аккаунт', CALLBACK_DATA.navAccess)]);
   rows.push([Markup.button.callback('Как установить приложение', CALLBACK_DATA.navInstall)]);
   return Markup.inlineKeyboard(rows);
 };

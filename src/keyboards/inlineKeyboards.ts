@@ -115,7 +115,7 @@ export const createCouponSuccessKeyboard = (appUrl?: string) =>
   Markup.inlineKeyboard([
     ...compact([urlButton('Открыть Strongest OS', appUrl)]).map((button) => [button]),
     [Markup.button.callback('📲 Установить приложение', CALLBACK_DATA.navInstall)],
-    [Markup.button.callback('Мой доступ', CALLBACK_DATA.navAccess)],
+    [Markup.button.callback('👤 Мой аккаунт', CALLBACK_DATA.navAccess)],
   ]);
 
 export const createRetryKeyboard = () =>
