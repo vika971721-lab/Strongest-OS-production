@@ -8,7 +8,8 @@ import {
   type CouponStatus,
   type CreateCouponInput,
 } from '../types/coupon.js';
-import { normalizeCouponCode } from '../utils/couponCodes.js';
+import { normalizeCouponCode, safeCouponLogData } from '../utils/couponCodes.js';
+import { logger } from '../utils/logger.js';
 
 interface CouponRow {
   id: string;
@@ -214,7 +215,22 @@ export class SupabaseCouponRepository implements CouponRepository {
       p_supabase_user_id: input.supabaseUserId,
       p_now: input.now.toISOString(),
     });
-    if (error) return { status: 'temporary_error' };
+    if (error) {
+      const rpcError = error as { message: string; code?: string; details?: string; hint?: string };
+      logger.error(
+        {
+          telegramId: input.telegramId,
+          rpc: 'redeem_access_coupon',
+          supabaseError: rpcError.message,
+          supabaseCode: rpcError.code,
+          supabaseDetails: rpcError.details,
+          supabaseHint: rpcError.hint,
+          ...safeCouponLogData(normalized.code),
+        },
+        'coupon_rpc_error',
+      );
+      return { status: 'temporary_error' };
+    }
     return asRedemptionResult(data);
   }
 }
