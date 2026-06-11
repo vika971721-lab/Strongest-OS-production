@@ -34,7 +34,7 @@ const formatCouponInfo = (coupon: AccessCoupon, timeZone: string): string =>
   [
     'Информация о купоне',
     '',
-    `code: ${escapeTelegramHtml(coupon.code)}`,
+    `code: <code>${escapeTelegramHtml(coupon.code)}</code>`,
     `duration_days: ${coupon.durationDays}`,
     `status: ${coupon.status}`,
     `source: ${escapeTelegramHtml(coupon.source)}`,
@@ -67,13 +67,15 @@ export const handleAdminIssueCouponCommand = async (
     adminTelegramId: telegramId,
     now: new Date(),
   });
-  const text = `Выпущено купонов: ${codes.length}\n\n${codes.join('\n')}`;
-  if (text.length <= 3900) {
-    await ctx.reply(escapeTelegramHtml(text));
+  const codeLines = codes.map((c) => `<code>${escapeTelegramHtml(c)}</code>`).join('\n');
+  const htmlText = `Выпущено купонов: ${codes.length}\n\n${codeLines}`;
+  if (htmlText.length <= 3900) {
+    await ctx.reply(htmlText);
     return;
   }
+  const plainText = `Выпущено купонов: ${codes.length}\n\n${codes.join('\n')}`;
   await ctx.replyWithDocument({
-    source: Buffer.from(text, 'utf8'),
+    source: Buffer.from(plainText, 'utf8'),
     filename: 'strongest-os-coupons.txt',
   });
 };

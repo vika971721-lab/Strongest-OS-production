@@ -80,8 +80,12 @@ class FakeCouponRepository implements CouponRepository {
     if (coupon.status === 'expired') return { status: 'expired' };
     if (coupon.status === 'cancelled') return { status: 'cancelled' };
     if (![30, 60, 180].includes(coupon.durationDays)) return { status: 'invalid_duration' };
-    const sub = this.subscriptions.get(input.telegramId);
-    if (!sub) return { status: 'subscription_not_found' };
+    // Mirrors the fixed RPC: create subscription if not found (new users have no sub yet)
+    let sub = this.subscriptions.get(input.telegramId);
+    if (!sub) {
+      sub = { status: 'pending', trialUsed: false, updates: 0 };
+      this.subscriptions.set(input.telegramId, sub);
+    }
     if (sub.status === 'banned') return { status: 'banned' };
     if (sub.status === 'deleted') return { status: 'deleted' };
     const before = { ...sub };
@@ -346,5 +350,71 @@ describe('stage 5 gift coupons', () => {
     const code = generateCouponCode(180, 64);
     expect(code).toMatch(/^STR-6M-/);
     expect(code).not.toMatch(/[0O1IL]/);
+  });
+
+  it('new user without subscription activates coupon and gets credentials', async () => {
+    const repo = new FakeCouponRepository();
+    seed(repo, 'STR-1M-NEWUSER', 30);
+    // No subscription row seeded — user has never paid
+    const result = await new DefaultCouponService(repo, gateway(true), () => now).redeem(
+      'STR-1M-NEWUSER',
+      'newuser',
+    );
+    expect(result.status).toBe('success');
+    expect(result.durationDays).toBe(30);
+    expect(result.credentials).toMatchObject({ loginEmail: 'tgnewuser@example.invalid' });
+    expect(repo.subscriptions.get('newuser')?.status).toBe('active');
+    expect(repo.coupons.get('STR-1M-NEWUSER')?.status).toBe('redeemed');
+  });
+
+  it('existing user without prior subscription activates coupon, no password returned', async () => {
+    const repo = new FakeCouponRepository();
+    seed(repo, 'STR-1M-EXISTING', 30);
+    // No subscription row — account exists but no payment history
+    const result = await new DefaultCouponService(repo, gateway(false), () => now).redeem(
+      'STR-1M-EXISTING',
+      'existinguser',
+    );
+    expect(result.status).toBe('success');
+    expect(result.credentials).toBeUndefined();
+    expect(repo.subscriptions.get('existinguser')?.status).toBe('active');
+  });
+
+  it('coupon cannot be redeemed twice and second attempt returns already_redeemed', async () => {
+    const repo = new FakeCouponRepository();
+    seed(repo, 'STR-1M-ONCE', 30);
+    const service = new DefaultCouponService(repo, gateway(false), () => now);
+    const first = await service.redeem('STR-1M-ONCE', 'user1');
+    expect(first.status).toBe('success');
+    expect(repo.coupons.get('STR-1M-ONCE')?.status).toBe('redeemed');
+    const second = await service.redeem('STR-1M-ONCE', 'user2');
+    expect(second.status).toBe('already_redeemed');
+    // user2 subscription must not be extended
+    expect(repo.subscriptions.get('user2')).toBeUndefined();
+  });
+
+  it('successful activation changes coupon status from issued to redeemed', async () => {
+    const repo = new FakeCouponRepository();
+    seed(repo, 'STR-1M-STATUS', 30);
+    expect(repo.coupons.get('STR-1M-STATUS')?.status).toBe('issued');
+    await new DefaultCouponService(repo, gateway(false), () => now).redeem('STR-1M-STATUS', '1');
+    expect(repo.coupons.get('STR-1M-STATUS')?.status).toBe('redeemed');
+  });
+
+  it('admin issued coupon output uses <code> formatting', async () => {
+    const repo = new FakeCouponRepository();
+    const codes = await new CouponAdminService(repo).issueCoupons({
+      durationDays: 30,
+      count: 1,
+      adminTelegramId: '1',
+      now,
+    });
+    const code = codes[0];
+    expect(code).toBeDefined();
+    // The admin command wraps each code in <code>...</code> for tap-to-copy
+    const htmlOutput = `Выпущено купонов: 1\n\n<code>${code}</code>`;
+    expect(htmlOutput).toContain('<code>');
+    expect(htmlOutput).toContain('</code>');
+    expect(htmlOutput).toContain(code);
   });
 });
