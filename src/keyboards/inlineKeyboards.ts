@@ -1,5 +1,6 @@
 import { Markup } from 'telegraf';
 import { CALLBACK_DATA } from '../config/constants.js';
+import type { PricingConfig } from '../config/pricing.js';
 import { createSupportLink } from '../utils/telegram.js';
 
 const urlButton = (label: string, url: string | undefined) =>
@@ -82,9 +83,27 @@ export const createPasswordCreatedKeyboard = (appUrl?: string) =>
 export const createCouponCancelKeyboard = () =>
   Markup.inlineKeyboard([[Markup.button.callback('Отмена', CALLBACK_DATA.couponCancel)]]);
 
+export const createPlanSelectionKeyboard = (trialUsed: boolean, pricing: PricingConfig) =>
+  Markup.inlineKeyboard([
+    ...(!trialUsed
+      ? [[Markup.button.callback(`🌟 1 месяц (первый) — ${pricing.firstPeriodStars} ⭐`, CALLBACK_DATA.planMonthly)]]
+      : [[Markup.button.callback(`🔄 1 месяц — ${pricing.renewalPeriodStars} ⭐`, CALLBACK_DATA.planMonthly)]]),
+    [Markup.button.callback(`📅 3 месяца — ${pricing.threeMonthsStars} ⭐`, CALLBACK_DATA.planThreeMonths)],
+    [Markup.button.callback(`📅 6 месяцев — ${pricing.sixMonthsStars} ⭐`, CALLBACK_DATA.planSixMonths)],
+    [Markup.button.callback(`🏆 12 месяцев — ${pricing.yearlyStars} ⭐`, CALLBACK_DATA.planYearly)],
+    [Markup.button.callback('◀️ Назад', CALLBACK_DATA.navMain)],
+  ]);
+
+export const createPlanConfirmKeyboard = (planCallback: string) =>
+  Markup.inlineKeyboard([
+    [Markup.button.callback('✅ Оплатить', planCallback)],
+    [Markup.button.callback('◀️ Назад к тарифам', CALLBACK_DATA.navPlans)],
+  ]);
+
 export const createCouponSuccessKeyboard = (appUrl?: string) =>
   Markup.inlineKeyboard([
     ...compact([urlButton('Открыть Strongest OS', appUrl)]).map((button) => [button]),
+    [Markup.button.callback('📲 Установить приложение', CALLBACK_DATA.navInstall)],
     [Markup.button.callback('Мой доступ', CALLBACK_DATA.navAccess)],
   ]);
 

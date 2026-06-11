@@ -24,6 +24,12 @@ const pricing = {
   renewalPeriodStars: 222,
   firstPeriodDays: 31,
   renewalPeriodDays: 32,
+  threeMonthsStars: 300,
+  threeMonthsDays: 90,
+  sixMonthsStars: 600,
+  sixMonthsDays: 180,
+  yearlyStars: 1200,
+  yearlyDays: 365,
 };
 const timezone = 'Asia/Almaty';
 const nowMs = Date.parse('2026-06-09T00:00:00.000Z');

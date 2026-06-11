@@ -138,10 +138,20 @@ export const createOpaqueToken = (prefix: string): string =>
 export const addDays = (base: Date, days: number): Date =>
   new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
 
-export const getPlanConfig = (pricing: PricingConfig, plan: PaymentPlan): PlanConfig =>
-  plan === 'first_month'
-    ? { plan, amount: pricing.firstPeriodStars, periodDays: pricing.firstPeriodDays }
-    : { plan, amount: pricing.renewalPeriodStars, periodDays: pricing.renewalPeriodDays };
+export const getPlanConfig = (pricing: PricingConfig, plan: PaymentPlan): PlanConfig => {
+  switch (plan) {
+    case 'first_month':
+      return { plan, amount: pricing.firstPeriodStars, periodDays: pricing.firstPeriodDays };
+    case 'monthly_renewal':
+      return { plan, amount: pricing.renewalPeriodStars, periodDays: pricing.renewalPeriodDays };
+    case 'three_months':
+      return { plan, amount: pricing.threeMonthsStars, periodDays: pricing.threeMonthsDays };
+    case 'six_months':
+      return { plan, amount: pricing.sixMonthsStars, periodDays: pricing.sixMonthsDays };
+    case 'yearly':
+      return { plan, amount: pricing.yearlyStars, periodDays: pricing.yearlyDays };
+  }
+};
 
 export const determinePaymentPlan = (state: UserAccessState): PaymentPlan | { blocked: string } => {
   if (state.kind === 'banned') return { blocked: 'banned' };
@@ -152,17 +162,53 @@ export const determinePaymentPlan = (state: UserAccessState): PaymentPlan | { bl
   return state.trialUsed ? 'monthly_renewal' : 'first_month';
 };
 
+const planInvoiceMeta = (
+  plan: PaymentPlan,
+  periodDays: number,
+): { title: string; description: string; label: string } => {
+  switch (plan) {
+    case 'first_month':
+      return {
+        title: 'Strongest OS — первый месяц',
+        description: `Доступ к Strongest OS на ${periodDays} дней. После оплаты бот создаст аккаунт и отправит логин и пароль.`,
+        label: 'Первый месяц',
+      };
+    case 'monthly_renewal':
+      return {
+        title: 'Strongest OS — продление 1 месяц',
+        description: `Продление доступа Strongest OS ещё на ${periodDays} дней. Оставшиеся дни не сгорают.`,
+        label: '1 месяц',
+      };
+    case 'three_months':
+      return {
+        title: 'Strongest OS — 3 месяца',
+        description: `Доступ к Strongest OS на ${periodDays} дней. Оставшиеся дни не сгорают.`,
+        label: '3 месяца',
+      };
+    case 'six_months':
+      return {
+        title: 'Strongest OS — 6 месяцев',
+        description: `Доступ к Strongest OS на ${periodDays} дней. Оставшиеся дни не сгорают.`,
+        label: '6 месяцев',
+      };
+    case 'yearly':
+      return {
+        title: 'Strongest OS — 12 месяцев',
+        description: `Доступ к Strongest OS на ${periodDays} дней. Оставшиеся дни не сгорают.`,
+        label: '12 месяцев',
+      };
+  }
+};
+
 export const buildTelegramStarsInvoice = (order: PaymentOrder): InvoiceSpec => {
-  const first = order.plan === 'first_month';
+  const meta = planInvoiceMeta(order.plan, order.periodDays);
   return {
-    title: first ? 'Strongest OS — первый период' : 'Strongest OS — продление',
-    description: first
-      ? `Доступ к Strongest OS на ${order.periodDays} дней. После оплаты бот создаст аккаунт и отправит логин и пароль.`
-      : `Продление доступа Strongest OS ещё на ${order.periodDays} дней. Оставшиеся дни не сгорают.`,
+    title: meta.title,
+    description: meta.description,
     payload: order.providerInvoicePayload,
     provider_token: TELEGRAM_STARS_PROVIDER_TOKEN,
     currency: TELEGRAM_STARS_CURRENCY,
-    prices: [{ label: first ? 'Первый период' : 'Продление', amount: order.amount }],
+    prices: [{ label: meta.label, amount: order.amount }],
   };
 };
 
@@ -424,7 +470,12 @@ const successfulPaymentMessage = (input: {
     const appLine = input.appUrl ? `\n🌐 Ссылка:\n${escapeTelegramHtml(input.appUrl)}\n` : '';
     return `🚀 Доступ активирован.\n\nStrongest OS запущена. Теперь у тебя есть система: квесты, цели, прогресс и дисциплина в одном месте.\n\nЗаходи, собирай день и прокачивай себя без хаоса.\n${appLine}\n🔐 Логин:\n<code>${input.result.loginEmail ? escapeTelegramHtml(input.result.loginEmail) : 'уточняется'}</code>\n\n🔑 Пароль:\n<code>${escapeTelegramHtml(input.result.password)}</code>\n\n📅 Доступ активен до:\n${expires}\n\n<b>Сохрани пароль.</b> Бот показывает его только один раз.\n\nЕсли потеряешь — создай новый через «Восстановить доступ».`;
   }
-  if (input.order.plan === 'monthly_renewal') {
+  if (
+    input.order.plan === 'monthly_renewal' ||
+    input.order.plan === 'three_months' ||
+    input.order.plan === 'six_months' ||
+    input.order.plan === 'yearly'
+  ) {
     return `⚡ Доступ продлён.\n\nДобавлено: <b>${input.order.periodDays} дней</b>\n\nНовая дата окончания:\n${expires}\n\nОставшиеся дни сохранены. Продолжай двигаться вперёд. 💪`;
   }
   const appLine = input.appUrl ? `\n🌐 Ссылка:\n${escapeTelegramHtml(input.appUrl)}\n` : '';

@@ -53,6 +53,12 @@ const pricing = {
   renewalPeriodStars: 150,
   firstPeriodDays: 30,
   renewalPeriodDays: 30,
+  threeMonthsStars: 300,
+  threeMonthsDays: 90,
+  sixMonthsStars: 600,
+  sixMonthsDays: 180,
+  yearlyStars: 1200,
+  yearlyDays: 365,
 };
 
 const env: AppEnv = {

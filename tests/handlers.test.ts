@@ -22,6 +22,12 @@ const env: AppEnv = {
     renewalPeriodStars: 150,
     firstPeriodDays: 30,
     renewalPeriodDays: 30,
+    threeMonthsStars: 399,
+    threeMonthsDays: 90,
+    sixMonthsStars: 749,
+    sixMonthsDays: 180,
+    yearlyStars: 1299,
+    yearlyDays: 365,
   },
 };
 

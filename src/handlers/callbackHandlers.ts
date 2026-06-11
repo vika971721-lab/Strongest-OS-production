@@ -3,11 +3,15 @@ import {
   createFeaturesKeyboard,
   createInstallationKeyboard,
   createPasswordCreatedKeyboard,
+  createPlanConfirmKeyboard,
   createPlanKeyboard,
+  createPlanSelectionKeyboard,
   createRetryKeyboard,
   createSupportKeyboard,
   createTermsKeyboard,
 } from '../keyboards/inlineKeyboards.js';
+import type { PaymentPlan } from '../types/payment.js';
+import { getPlanConfig, handleCreatePaymentInvoiceForPlan } from '../services/paymentFlow.js';
 import { requirePrivateChat } from '../middleware/privateChat.js';
 import type { BotContext } from '../types/context.js';
 import { editOrReply } from '../utils/delivery.js';

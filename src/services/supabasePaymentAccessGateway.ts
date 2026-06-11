@@ -190,7 +190,7 @@ export class SupabasePaymentAccessGateway implements PaymentAccessGateway {
     const newExpiresAt = addDays(base, input.periodDays);
 
     const isFirstPayment = !existing?.first_payment_at;
-    const trialUsed = Boolean(existing?.trial_used) || input.plan === 'first_month';
+    const trialUsed = true;
 
     const { error: upsertErr } = await (this.db.from('subscriptions').upsert(
       {
