@@ -8,7 +8,9 @@ import { SupabaseNotificationRepository } from './repositories/notificationRepos
 import { SupabasePaymentEventRepository } from './repositories/supabasePaymentEventRepository.js';
 import { SupabasePaymentOrderRepository } from './repositories/supabasePaymentOrderRepository.js';
 import { SupabaseSubscriptionRepository } from './repositories/subscriptionRepository.js';
+import { DefaultAccessStateService } from './services/accessStateService.js';
 import { SupabaseAccountService } from './services/supabaseAccountService.js';
+import { SupabaseAccessStateSource } from './services/supabaseAccessStateSource.js';
 import { SupabasePaymentAccessGateway } from './services/supabasePaymentAccessGateway.js';
 import {
   SchedulerRunner,
@@ -55,6 +57,9 @@ export const createApplication = (env: AppEnv): Application => {
         paymentEventRepository: new SupabasePaymentEventRepository(supabaseClient),
         accountService: new SupabaseAccountService(supabaseClient),
         paymentAccessGateway: new SupabasePaymentAccessGateway(supabaseClient),
+        accessStateProvider: new DefaultAccessStateService(
+          new SupabaseAccessStateSource(supabaseClient),
+        ),
       }
     : {};
 

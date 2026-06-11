@@ -52,7 +52,7 @@ export const buildWelcomeMessage = (state: UserAccessState): string => {
 };
 
 const safeEmail = (email: string | undefined): string =>
-  escapeTelegramHtml(email || 'логин пока не указан');
+  `<code>${escapeTelegramHtml(email || 'логин пока не указан')}</code>`;
 
 export const buildAccessMessage = (
   state: UserAccessState,
@@ -147,7 +147,7 @@ export const buildCouponNewAccountSuccessMessage = (input: {
   loginEmail: string;
   password: string;
 }): string =>
-  `🎟 Промокод активирован.\n\n🚀 Доступ к Strongest OS открыт.\n\nДобавлено: ${input.days} дней\n\n📅 Новый срок:\n${formatDateTime(input.expiresAt?.toISOString(), input.timeZone)}\n\n🌐 Ссылка:\n${escapeTelegramHtml(input.appUrl)}\n\n🔐 Логин:\n${escapeTelegramHtml(input.loginEmail)}\n\n🔑 Пароль:\n${escapeTelegramHtml(input.password)}\n\n<b>Сохрани пароль.</b> Бот показывает его только один раз.`;
+  `🎟 Промокод активирован.\n\n🚀 Доступ к Strongest OS открыт.\n\nДобавлено: ${input.days} дней\n\n📅 Новый срок:\n${formatDateTime(input.expiresAt?.toISOString(), input.timeZone)}\n\n🌐 Ссылка:\n${escapeTelegramHtml(input.appUrl)}\n\n🔐 Логин:\n<code>${escapeTelegramHtml(input.loginEmail)}</code>\n\n🔑 Пароль:\n<code>${escapeTelegramHtml(input.password)}</code>\n\n<b>Сохрани пароль.</b> Бот показывает его только один раз.`;
 
 export const buildCouponAlreadyRedeemedByUserMessage = (
   expiresAt: Date | undefined,
@@ -186,7 +186,7 @@ export const buildPasswordRecoveryMessage = (state: UserAccessState): string => 
 };
 
 export const buildPasswordCreatedMessage = (loginEmail: string, password: string): string =>
-  `🔑 Новый пароль создан.\n\n🔐 Логин:\n${safeEmail(loginEmail)}\n\n🔑 Новый пароль:\n${escapeTelegramHtml(password)}\n\n<b>Сохрани его сразу.</b> Бот не хранит пароль и не сможет показать его повторно.`;
+  `🔑 Новый пароль создан.\n\n🔐 Логин:\n${safeEmail(loginEmail)}\n\n🔑 Новый пароль:\n<code>${escapeTelegramHtml(password)}</code>\n\n<b>Сохрани его сразу.</b> Бот не хранит пароль и не сможет показать его повторно.`;
 
 export const buildFeaturesMessage = (): string =>
   `📦 Что входит в Strongest OS\n\n🎯 Квесты и главный квест дня\nПланируй действия, выделяй одну главную задачу.\n\n📈 XP, уровни и ранги\nВизуальный прогресс за каждое выполненное действие.\n\n🏆 WSTшки и кейсы\nВнутренняя валюта за результаты, игровые награды.\n\n💪 Денежные цели\nФиксируй цель, срок и фактический прогресс.\n\n🧠 Шаблоны квестов\nГотовые задачи для продаж, спорта, обучения и здоровья.\n\n📅 Календарь и разбор дня\nИстория действий, сильные и слабые дни, личные выводы.\n\n🚀 PWA-приложение\nДобавь Strongest OS на главный экран и используй как приложение.`;
