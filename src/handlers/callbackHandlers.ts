@@ -11,7 +11,7 @@ import {
   createTermsKeyboard,
 } from '../keyboards/inlineKeyboards.js';
 import type { PaymentPlan } from '../types/payment.js';
-import { getPlanConfig, handleCreatePaymentInvoiceForPlan } from '../services/paymentFlow.js';
+import { getPlanConfig } from '../services/paymentFlow.js';
 import { requirePrivateChat } from '../middleware/privateChat.js';
 import type { BotContext } from '../types/context.js';
 import { editOrReply } from '../utils/delivery.js';
@@ -69,20 +69,95 @@ export const handleCallbackQuery = async (ctx: BotContext, deps: UiDependencies)
       const telegramId = ctx.state.user?.telegramId;
       if (!telegramId) return;
       const state = await deps.accessStateProvider.getUserAccessState(telegramId);
-      const canPay = ![
+      const blocked = [
         'banned',
         'deleted',
         'broken_link',
         'unknown_status',
         'temporarily_unavailable',
       ].includes(state.kind);
+      const keyboard = blocked
+        ? state.kind === 'temporarily_unavailable'
+          ? createRetryKeyboard()
+          : createPlanKeyboard(false)
+        : createPlanSelectionKeyboard(
+            'trialUsed' in state ? state.trialUsed : false,
+            deps.env.pricing,
+          );
+      await editOrReply(ctx, buildPlanMessage(state, deps.env.pricing), keyboard);
+      return;
+    }
+    case CALLBACK_DATA.planMonthly: {
+      if (!(await requirePrivateChat(ctx))) return;
+      const telegramId = ctx.state.user?.telegramId;
+      if (!telegramId) return;
+      const state = await deps.accessStateProvider.getUserAccessState(telegramId);
+      const plan: PaymentPlan =
+        'trialUsed' in state && state.trialUsed ? 'monthly_renewal' : 'first_month';
+      const planConfig = getPlanConfig(deps.env.pricing, plan);
       await editOrReply(
         ctx,
-        buildPlanMessage(state, deps.env.pricing),
-        state.kind === 'temporarily_unavailable'
-          ? createRetryKeyboard()
-          : createPlanKeyboard(canPay),
+        `Тариф: 1 месяц — ${planConfig.amount} ⭐\nСрок: ${planConfig.periodDays} дней`,
+        createPlanConfirmKeyboard(CALLBACK_DATA.payCreateMonthly),
       );
+      return;
+    }
+    case CALLBACK_DATA.planThreeMonths: {
+      if (!(await requirePrivateChat(ctx))) return;
+      const planConfig = getPlanConfig(deps.env.pricing, 'three_months');
+      await editOrReply(
+        ctx,
+        `Тариф: 3 месяца — ${planConfig.amount} ⭐\nСрок: ${planConfig.periodDays} дней`,
+        createPlanConfirmKeyboard(CALLBACK_DATA.payCreateThreeMonths),
+      );
+      return;
+    }
+    case CALLBACK_DATA.planSixMonths: {
+      if (!(await requirePrivateChat(ctx))) return;
+      const planConfig = getPlanConfig(deps.env.pricing, 'six_months');
+      await editOrReply(
+        ctx,
+        `Тариф: 6 месяцев — ${planConfig.amount} ⭐\nСрок: ${planConfig.periodDays} дней`,
+        createPlanConfirmKeyboard(CALLBACK_DATA.payCreateSixMonths),
+      );
+      return;
+    }
+    case CALLBACK_DATA.planYearly: {
+      if (!(await requirePrivateChat(ctx))) return;
+      const planConfig = getPlanConfig(deps.env.pricing, 'yearly');
+      await editOrReply(
+        ctx,
+        `Тариф: 12 месяцев — ${planConfig.amount} ⭐\nСрок: ${planConfig.periodDays} дней`,
+        createPlanConfirmKeyboard(CALLBACK_DATA.payCreateYearly),
+      );
+      return;
+    }
+    case CALLBACK_DATA.payCreateMonthly:
+    case CALLBACK_DATA.payCreateThreeMonths:
+    case CALLBACK_DATA.payCreateSixMonths:
+    case CALLBACK_DATA.payCreateYearly: {
+      if (!deps.paymentAccessGateway || !deps.paymentOrderRepository) {
+        await editOrReply(ctx, MESSAGES.paymentNextStage);
+        return;
+      }
+      if (!(await requirePrivateChat(ctx))) return;
+      const telegramId = ctx.state.user?.telegramId;
+      if (!telegramId || !ctx.chat) return;
+      const state = await deps.accessStateProvider.getUserAccessState(telegramId);
+      const trialUsed = 'trialUsed' in state ? state.trialUsed : false;
+      const planForCallback = ((): PaymentPlan => {
+        if (data === CALLBACK_DATA.payCreateThreeMonths) return 'three_months';
+        if (data === CALLBACK_DATA.payCreateSixMonths) return 'six_months';
+        if (data === CALLBACK_DATA.payCreateYearly) return 'yearly';
+        return trialUsed ? 'monthly_renewal' : 'first_month';
+      })();
+      await handleCreatePaymentInvoice({
+        ctx,
+        env: deps.env,
+        accessGateway: deps.paymentAccessGateway,
+        orderRepository: deps.paymentOrderRepository,
+        plan: planForCallback,
+      });
       return;
     }
     case CALLBACK_DATA.navFeatures:

@@ -248,14 +248,22 @@ export const ensurePaymentOrder = async (input: {
   accessGateway: PaymentAccessGateway;
   orderRepository: PaymentOrderRepository;
   ttlMinutes: number;
+  plan?: PaymentPlan;
   now?: Date;
 }): Promise<
   { ok: true; order: PaymentOrder; reused: boolean } | { ok: false; message: string }
 > => {
   const now = input.now ?? new Date();
-  const state = await input.accessGateway.getAccessState(input.telegramId);
-  const plan = determinePaymentPlan(state);
-  if (typeof plan !== 'string') return { ok: false, message: paymentBlockedMessage(plan.blocked) };
+  let plan: PaymentPlan;
+  if (input.plan !== undefined) {
+    plan = input.plan;
+  } else {
+    const state = await input.accessGateway.getAccessState(input.telegramId);
+    const determined = determinePaymentPlan(state);
+    if (typeof determined !== 'string')
+      return { ok: false, message: paymentBlockedMessage(determined.blocked) };
+    plan = determined;
+  }
   const planConfig = getPlanConfig(input.pricing, plan);
   const pending = await input.orderRepository.findRecentPendingOrder(
     input.telegramId,
@@ -495,6 +503,7 @@ export const handleCreatePaymentInvoice = async (input: {
   env: AppEnv;
   accessGateway: PaymentAccessGateway;
   orderRepository: PaymentOrderRepository;
+  plan?: PaymentPlan;
 }): Promise<void> => {
   if (input.ctx.chat?.type !== 'private') {
     await input.ctx.reply('Оплата доступна только в личном чате с ботом.');
@@ -522,6 +531,7 @@ export const handleCreatePaymentInvoice = async (input: {
     accessGateway: input.accessGateway,
     orderRepository: input.orderRepository,
     ttlMinutes: input.env.paymentOrderTtlMinutes ?? 15,
+    ...(input.plan !== undefined ? { plan: input.plan } : {}),
   });
   if (!ensured.ok) {
     await input.ctx.reply(ensured.message);

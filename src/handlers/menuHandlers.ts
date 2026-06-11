@@ -7,6 +7,7 @@ import {
   createInstallationKeyboard,
   createPasswordRecoveryKeyboard,
   createPlanKeyboard,
+  createPlanSelectionKeyboard,
   createRetryKeyboard,
   createSupportKeyboard,
   createTermsKeyboard,
@@ -62,15 +63,21 @@ export const handlePlanScreen = async (ctx: BotContext, deps: UiDependencies): P
   if (!telegramId) return;
   logger.info({ telegramId }, 'plan_screen_opened');
   const state = await deps.accessStateProvider.getUserAccessState(telegramId);
-  const canPay = ![
+  const blocked = [
     'banned',
     'deleted',
     'broken_link',
     'unknown_status',
     'temporarily_unavailable',
   ].includes(state.kind);
-  const keyboard =
-    state.kind === 'temporarily_unavailable' ? createRetryKeyboard() : createPlanKeyboard(canPay);
+  const keyboard = blocked
+    ? state.kind === 'temporarily_unavailable'
+      ? createRetryKeyboard()
+      : createPlanKeyboard(false)
+    : createPlanSelectionKeyboard(
+        'trialUsed' in state ? state.trialUsed : false,
+        deps.env.pricing,
+      );
   await ctx.reply(buildPlanMessage(state, deps.env.pricing), keyboard);
 };
 
