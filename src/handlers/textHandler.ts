@@ -60,83 +60,89 @@ export const handleTextMessage = async (
   if (telegramId) {
     const state = await dependencies.conversationStore.get(telegramId);
     if (state?.name === 'awaiting_coupon') {
-      if (!(await requirePrivateChat(ctx))) return;
-      await dependencies.conversationStore.clear(telegramId);
-      if (isConversationExpired(state)) {
-        await ctx.reply(
-          'Время ожидания закончилось. Нажмите “Активировать промокод” и попробуйте снова.',
-          createMainMenuKeyboard(),
-        );
-        return;
-      }
-
-      const normalized = normalizeCouponCode(text);
-      if (!normalized.ok) {
-        await ctx.reply(MESSAGES.couponInvalidInput, createMainMenuKeyboard());
-        return;
-      }
-      const limiter = dependencies.couponAttemptLimiter ?? defaultCouponLimiter;
-      if (limiter.isLimited(telegramId)) {
-        await ctx.reply(MESSAGES.couponTooManyAttempts, createMainMenuKeyboard());
-        return;
-      }
-      logger.info({ telegramId, ...safeCouponLogData(normalized.code) }, 'coupon_code_received');
-      const result =
-        (await dependencies.couponService.redeem(normalized.code, telegramId)) ??
-        ({ status: 'temporary_error' } as const);
-      if (result.status === 'success') {
-        limiter.clear(telegramId);
-        const keyboard = createCouponSuccessKeyboard(dependencies.env.appUrl);
-        if (result.credentials) {
+      const menuButtonValues = new Set<string>(Object.values(MENU_BUTTONS));
+      if (menuButtonValues.has(text)) {
+        await dependencies.conversationStore.clear(telegramId);
+        // fall through to menu button handling below
+      } else {
+        if (!(await requirePrivateChat(ctx))) return;
+        await dependencies.conversationStore.clear(telegramId);
+        if (isConversationExpired(state)) {
           await ctx.reply(
-            buildCouponNewAccountSuccessMessage({
-              days: result.durationDays ?? 0,
-              expiresAt: result.expiresAt,
-              timeZone: dependencies.env.displayTimezone,
-              appUrl: appUrlForCoupon(dependencies.env),
-              loginEmail: result.credentials.loginEmail,
-              password: result.credentials.password,
-            }),
+            'Время ожидания закончилось. Нажмите “Активировать промокод” и попробуйте снова.',
+            createMainMenuKeyboard(),
+          );
+          return;
+        }
+
+        const normalized = normalizeCouponCode(text);
+        if (!normalized.ok) {
+          await ctx.reply(MESSAGES.couponInvalidInput, createMainMenuKeyboard());
+          return;
+        }
+        const limiter = dependencies.couponAttemptLimiter ?? defaultCouponLimiter;
+        if (limiter.isLimited(telegramId)) {
+          await ctx.reply(MESSAGES.couponTooManyAttempts, createMainMenuKeyboard());
+          return;
+        }
+        logger.info({ telegramId, ...safeCouponLogData(normalized.code) }, 'coupon_code_received');
+        const result =
+          (await dependencies.couponService.redeem(normalized.code, telegramId)) ??
+          ({ status: 'temporary_error' } as const);
+        if (result.status === 'success') {
+          limiter.clear(telegramId);
+          const keyboard = createCouponSuccessKeyboard(dependencies.env.appUrl);
+          if (result.credentials) {
+            await ctx.reply(
+              buildCouponNewAccountSuccessMessage({
+                days: result.durationDays ?? 0,
+                expiresAt: result.expiresAt,
+                timeZone: dependencies.env.displayTimezone,
+                appUrl: appUrlForCoupon(dependencies.env),
+                loginEmail: result.credentials.loginEmail,
+                password: result.credentials.password,
+              }),
+              keyboard,
+            );
+            return;
+          }
+          await ctx.reply(
+            buildCouponSuccessMessage(
+              result.durationDays ?? 0,
+              result.expiresAt,
+              dependencies.env.displayTimezone,
+            ),
             keyboard,
           );
           return;
         }
-        await ctx.reply(
-          buildCouponSuccessMessage(
-            result.durationDays ?? 0,
-            result.expiresAt,
-            dependencies.env.displayTimezone,
-          ),
-          keyboard,
-        );
-        return;
-      }
 
-      limiter.recordFailure(telegramId);
-      if (result.status === 'already_redeemed' && result.redeemedByTelegramId === telegramId) {
-        await ctx.reply(
-          buildCouponAlreadyRedeemedByUserMessage(
-            result.expiresAt,
-            dependencies.env.displayTimezone,
-          ),
-          createMainMenuKeyboard(),
-        );
+        limiter.recordFailure(telegramId);
+        if (result.status === 'already_redeemed' && result.redeemedByTelegramId === telegramId) {
+          await ctx.reply(
+            buildCouponAlreadyRedeemedByUserMessage(
+              result.expiresAt,
+              dependencies.env.displayTimezone,
+            ),
+            createMainMenuKeyboard(),
+          );
+          return;
+        }
+        const replyByStatus: Record<typeof result.status, string> = {
+          not_found: 'Промокод не найден.\n\nПроверь код и отправь его ещё раз одним сообщением.',
+          already_redeemed:
+            'Этот промокод уже использован.\n\nДоступ по нему получил пользователь, который активировал код первым.',
+          expired: 'Срок действия этого промокода закончился.',
+          cancelled: 'Этот промокод был отменён.',
+          invalid_duration: 'Не удалось активировать промокод. Обратись в поддержку.',
+          subscription_not_found: 'Не удалось активировать промокод. Обратись в поддержку.',
+          banned: '⛔ Активация промокода недоступна — аккаунт ограничен. Обратись в поддержку.',
+          deleted: 'Данные аккаунта удалены. Обратись в поддержку.',
+          temporary_error: MESSAGES.couponNotConfigured,
+        };
+        await ctx.reply(replyByStatus[result.status], createMainMenuKeyboard());
         return;
       }
-      const replyByStatus: Record<typeof result.status, string> = {
-        not_found: 'Промокод не найден.\n\nПроверь код и отправь его ещё раз одним сообщением.',
-        already_redeemed:
-          'Этот промокод уже использован.\n\nДоступ по нему получил пользователь, который активировал код первым.',
-        expired: 'Срок действия этого промокода закончился.',
-        cancelled: 'Этот промокод был отменён.',
-        invalid_duration: 'Не удалось активировать промокод. Обратись в поддержку.',
-        subscription_not_found: 'Не удалось активировать промокод. Обратись в поддержку.',
-        banned: '⛔ Активация промокода недоступна — аккаунт ограничен. Обратись в поддержку.',
-        deleted: 'Данные аккаунта удалены. Обратись в поддержку.',
-        temporary_error: MESSAGES.couponNotConfigured,
-      };
-      await ctx.reply(replyByStatus[result.status], createMainMenuKeyboard());
-      return;
     }
   }
 
