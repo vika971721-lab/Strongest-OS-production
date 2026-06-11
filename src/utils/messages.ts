@@ -92,28 +92,26 @@ export const buildAccessMessage = (
   }
 };
 
-const firstPlan = (pricing: PricingConfig): string =>
-  `🚀 Первый период Strongest OS\n\nСрок: ${pricing.firstPeriodDays} дней\nСтоимость: ${pricing.firstPeriodStars} Telegram Stars\n\nПосле оплаты бот создаст аккаунт и выдаст логин с паролем.\n\nЗапускай систему, собирай день и двигайся без хаоса.`;
+const planScreenNew = (): string =>
+  `🚀 Выбери режим доступа\n\nStrongest OS — это система для ежедневной прокачки: квесты, XP, уровни, streak, цели и история прогресса.\n\nПервый вход доступен один раз за 100⭐.\nГлавный тариф — 3 месяца за 399⭐.`;
 
-const renewalPlan = (pricing: PricingConfig): string =>
-  `⚡ Продление Strongest OS\n\nСрок: +${pricing.renewalPeriodDays} дней\nСтоимость: ${pricing.renewalPeriodStars} Telegram Stars\n\nНовые дни добавятся к текущему сроку. Оставшееся время не сгорает.`;
+const planScreenRenewal = (): string =>
+  `🚀 Выбери режим доступа\n\nStrongest OS — это система для ежедневной прокачки: квесты, XP, уровни, streak, цели и история прогресса.\n\nВыбери срок продления. Если доступ уже активен — новые дни добавятся сверху.`;
 
-export const buildPlanMessage = (state: UserAccessState, pricing: PricingConfig): string => {
+export const buildPlanMessage = (state: UserAccessState, _pricing: PricingConfig): string => {
   switch (state.kind) {
     case 'unregistered':
     case 'telegram_registered':
-      return firstPlan(pricing);
+      return planScreenNew();
     case 'account_pending':
-      return state.trialUsed ? renewalPlan(pricing) : firstPlan(pricing);
+      return state.trialUsed ? planScreenRenewal() : planScreenNew();
     case 'active':
-      return state.trialUsed ? renewalPlan(pricing) : firstPlan(pricing);
+      return state.trialUsed ? planScreenRenewal() : planScreenNew();
     case 'expired':
     case 'cancelled':
-      return state.trialUsed
-        ? `⚡ Возобновление Strongest OS\n\nСрок: +${pricing.renewalPeriodDays} дней\nСтоимость: ${pricing.renewalPeriodStars} Telegram Stars\n\nПосле оплаты доступ восстановится. Сохранённые данные снова станут доступны.`
-        : firstPlan(pricing);
+      return state.trialUsed ? planScreenRenewal() : planScreenNew();
     case 'marked_for_deletion':
-      return `Аккаунт ожидает удаления.\n\nОплата отменит удаление и восстановит доступ, если данные ещё не удалены.\n\n${state.trialUsed ? renewalPlan(pricing) : firstPlan(pricing)}`;
+      return `Аккаунт ожидает удаления.\n\nОплата отменит удаление и восстановит доступ, если данные ещё не удалены.\n\n${state.trialUsed ? planScreenRenewal() : planScreenNew()}`;
     case 'banned':
       return '⛔ Оформление доступа недоступно.\n\nАккаунт ограничен. Обратись в поддержку.';
     case 'deleted':

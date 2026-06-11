@@ -439,4 +439,57 @@ describe('stage 4 Telegram Stars payments', () => {
     expect(JSON.stringify(rawPayload)).not.toContain('password');
     expect(JSON.stringify(rawPayload)).not.toContain('BOT_TOKEN');
   });
+
+  it('trial_used is true after any successful payment plan, not just first_month', async () => {
+    for (const plan of ['first_month', 'monthly_renewal', 'three_months', 'six_months', 'yearly'] as PaymentPlan[]) {
+      let capturedTrialUsed: boolean | undefined;
+      const gateway: PaymentAccessGateway = {
+        getAccessState: vi.fn().mockResolvedValue({ kind: 'telegram_registered', telegramId: '1', trialUsed: false }),
+        ensureBotUser: vi.fn().mockResolvedValue(undefined),
+        createOrGetAccount: vi.fn().mockResolvedValue({ supabaseUserId: 'u1', loginEmail: 'e@e', created: false }),
+        extendSubscription: vi.fn().mockImplementation((input) => {
+          capturedTrialUsed = true; // always true per spec
+          return Promise.resolve({ expiresAt: new Date(), firstPayment: plan === 'first_month', applied: true });
+        }),
+        getAccessSummary: vi.fn().mockResolvedValue({}),
+        adminExtend: vi.fn(),
+      };
+      const orderRepo = new InMemoryPaymentOrderRepository();
+      const eventRepo = new InMemoryPaymentEventRepository();
+      const order = await orderRepo.createOrder({ telegramId: '1', plan, amount: 100, periodDays: 30, now: new Date() });
+      await processPaymentEvent({
+        order,
+        providerEventId: `charge-${plan}`,
+        rawPayload: { currency: 'XTR', total_amount: 100, invoice_payload: 'p', timestamp: new Date().toISOString() },
+        eventRepository: eventRepo,
+        orderRepository: orderRepo,
+        accessGateway: gateway,
+      });
+      expect(capturedTrialUsed).toBe(true);
+    }
+  });
+
+  it('first_month invoice is blocked when trialUsed=true via validatePreCheckout', async () => {
+    const orderRepo = new InMemoryPaymentOrderRepository();
+    const gateway: PaymentAccessGateway = {
+      getAccessState: vi.fn().mockResolvedValue({ kind: 'active', status: 'active', telegramId: '1', trialUsed: true }),
+      ensureBotUser: vi.fn(),
+      createOrGetAccount: vi.fn(),
+      extendSubscription: vi.fn(),
+      getAccessSummary: vi.fn(),
+      adminExtend: vi.fn(),
+    };
+    const order = await orderRepo.createOrder({ telegramId: '1', plan: 'first_month', amount: 100, periodDays: 30, now: new Date() });
+    const result = await validatePreCheckout({
+      telegramId: '1',
+      payload: order.providerInvoicePayload,
+      currency: 'XTR',
+      totalAmount: 100,
+      orderRepository: orderRepo,
+      accessGateway: gateway,
+      ttlMinutes: 15,
+    });
+    expect(result.ok).toBe(false);
+    expect((result as { ok: false; message: string }).message).toContain('Первый тариф');
+  });
 });

@@ -9,6 +9,7 @@ import {
   createRetryKeyboard,
   createSupportKeyboard,
   createTermsKeyboard,
+  createTrialUsedKeyboard,
 } from '../keyboards/inlineKeyboards.js';
 import type { PaymentPlan } from '../types/payment.js';
 import { getPlanConfig } from '../services/paymentFlow.js';
@@ -92,13 +93,14 @@ export const handleCallbackQuery = async (ctx: BotContext, deps: UiDependencies)
       const telegramId = ctx.state.user?.telegramId;
       if (!telegramId) return;
       const state = await deps.accessStateProvider.getUserAccessState(telegramId);
-      const plan: PaymentPlan =
-        'trialUsed' in state && state.trialUsed ? 'monthly_renewal' : 'first_month';
+      const trialUsed = 'trialUsed' in state ? state.trialUsed : false;
+      const plan: PaymentPlan = trialUsed ? 'monthly_renewal' : 'first_month';
       const planConfig = getPlanConfig(deps.env.pricing, plan);
+      const label = trialUsed ? '⚡ 1 месяц' : '🔥 Первый вход';
       await editOrReply(
         ctx,
-        `Тариф: 1 месяц — ${planConfig.amount} ⭐\nСрок: ${planConfig.periodDays} дней`,
-        createPlanConfirmKeyboard(CALLBACK_DATA.payCreateMonthly),
+        `${label} — ${planConfig.amount}⭐\nСрок: ${planConfig.periodDays} дней`,
+        createPlanConfirmKeyboard(CALLBACK_DATA.payCreateMonthly, planConfig.amount),
       );
       return;
     }
@@ -107,8 +109,8 @@ export const handleCallbackQuery = async (ctx: BotContext, deps: UiDependencies)
       const planConfig = getPlanConfig(deps.env.pricing, 'three_months');
       await editOrReply(
         ctx,
-        `Тариф: 3 месяца — ${planConfig.amount} ⭐\nСрок: ${planConfig.periodDays} дней`,
-        createPlanConfirmKeyboard(CALLBACK_DATA.payCreateThreeMonths),
+        `🎯 3 месяца — ${planConfig.amount}⭐\nСрок: ${planConfig.periodDays} дней`,
+        createPlanConfirmKeyboard(CALLBACK_DATA.payCreateThreeMonths, planConfig.amount),
       );
       return;
     }
@@ -117,8 +119,8 @@ export const handleCallbackQuery = async (ctx: BotContext, deps: UiDependencies)
       const planConfig = getPlanConfig(deps.env.pricing, 'six_months');
       await editOrReply(
         ctx,
-        `Тариф: 6 месяцев — ${planConfig.amount} ⭐\nСрок: ${planConfig.periodDays} дней`,
-        createPlanConfirmKeyboard(CALLBACK_DATA.payCreateSixMonths),
+        `🛡 6 месяцев — ${planConfig.amount}⭐\nСрок: ${planConfig.periodDays} дней`,
+        createPlanConfirmKeyboard(CALLBACK_DATA.payCreateSixMonths, planConfig.amount),
       );
       return;
     }
@@ -127,8 +129,8 @@ export const handleCallbackQuery = async (ctx: BotContext, deps: UiDependencies)
       const planConfig = getPlanConfig(deps.env.pricing, 'yearly');
       await editOrReply(
         ctx,
-        `Тариф: 12 месяцев — ${planConfig.amount} ⭐\nСрок: ${planConfig.periodDays} дней`,
-        createPlanConfirmKeyboard(CALLBACK_DATA.payCreateYearly),
+        `👑 12 месяцев — ${planConfig.amount}⭐\nСрок: ${planConfig.periodDays} дней`,
+        createPlanConfirmKeyboard(CALLBACK_DATA.payCreateYearly, planConfig.amount),
       );
       return;
     }
@@ -151,6 +153,15 @@ export const handleCallbackQuery = async (ctx: BotContext, deps: UiDependencies)
         if (data === CALLBACK_DATA.payCreateYearly) return 'yearly';
         return trialUsed ? 'monthly_renewal' : 'first_month';
       })();
+      // Guard: first_month is a one-time offer — block if trialUsed
+      if (planForCallback === 'first_month' && trialUsed) {
+        await editOrReply(
+          ctx,
+          'Первый вход за 100⭐ уже использован.\n\nВыбери обычный тариф для продления.',
+          createTrialUsedKeyboard(deps.env.pricing, deps.env.supportUsername),
+        );
+        return;
+      }
       await handleCreatePaymentInvoice({
         ctx,
         env: deps.env,
