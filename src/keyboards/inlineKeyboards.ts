@@ -86,11 +86,11 @@ export const createCouponCancelKeyboard = () =>
 export const createPlanSelectionKeyboard = (trialUsed: boolean, pricing: PricingConfig) =>
   Markup.inlineKeyboard([
     ...(!trialUsed
-      ? [[Markup.button.callback(`🌟 1 месяц (первый) — ${pricing.firstPeriodStars} ⭐`, CALLBACK_DATA.planMonthly)]]
-      : [[Markup.button.callback(`🔄 1 месяц — ${pricing.renewalPeriodStars} ⭐`, CALLBACK_DATA.planMonthly)]]),
-    [Markup.button.callback(`📅 3 месяца — ${pricing.threeMonthsStars} ⭐`, CALLBACK_DATA.planThreeMonths)],
-    [Markup.button.callback(`📅 6 месяцев — ${pricing.sixMonthsStars} ⭐`, CALLBACK_DATA.planSixMonths)],
-    [Markup.button.callback(`🏆 12 месяцев — ${pricing.yearlyStars} ⭐`, CALLBACK_DATA.planYearly)],
+      ? [[Markup.button.callback(`🔥 Первый вход — ${pricing.firstPeriodStars} ⭐`, CALLBACK_DATA.planMonthly)]]
+      : [[Markup.button.callback(`⚡ 1 месяц — ${pricing.renewalPeriodStars} ⭐`, CALLBACK_DATA.planMonthly)]]),
+    [Markup.button.callback(`🎯 3 месяца — ${pricing.threeMonthsStars} ⭐  Рекомендуемый`, CALLBACK_DATA.planThreeMonths)],
+    [Markup.button.callback(`🛡 6 месяцев — ${pricing.sixMonthsStars} ⭐`, CALLBACK_DATA.planSixMonths)],
+    [Markup.button.callback(`👑 12 месяцев — ${pricing.yearlyStars} ⭐`, CALLBACK_DATA.planYearly)],
     [Markup.button.callback('◀️ Назад', CALLBACK_DATA.navMain)],
   ]);
 

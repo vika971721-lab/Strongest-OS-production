@@ -169,33 +169,33 @@ const planInvoiceMeta = (
   switch (plan) {
     case 'first_month':
       return {
-        title: 'Strongest OS — первый месяц',
-        description: `Доступ к Strongest OS на ${periodDays} дней. После оплаты бот создаст аккаунт и отправит логин и пароль.`,
-        label: 'Первый месяц',
+        title: 'Strongest OS — первый вход',
+        description: `30 дней доступа к Strongest OS: квесты, XP, уровни, streak, цели и история прогресса. После оплаты бот создаст аккаунт и выдаст логин с паролем.`,
+        label: 'Первый вход — 30 дней',
       };
     case 'monthly_renewal':
       return {
-        title: 'Strongest OS — продление 1 месяц',
-        description: `Продление доступа Strongest OS ещё на ${periodDays} дней. Оставшиеся дни не сгорают.`,
-        label: '1 месяц',
+        title: 'Strongest OS — 1 месяц режима',
+        description: `Продление доступа к Strongest OS на 30 дней. Если доступ уже активен, новые дни добавятся сверху.`,
+        label: '1 месяц доступа',
       };
     case 'three_months':
       return {
-        title: 'Strongest OS — 3 месяца',
-        description: `Доступ к Strongest OS на ${periodDays} дней. Оставшиеся дни не сгорают.`,
-        label: '3 месяца',
+        title: 'Strongest OS — 3 месяца прокачки',
+        description: `90 дней доступа к Strongest OS. Рекомендуемый тариф для стабильного режима и отслеживания прогресса.`,
+        label: '3 месяца доступа',
       };
     case 'six_months':
       return {
-        title: 'Strongest OS — 6 месяцев',
-        description: `Доступ к Strongest OS на ${periodDays} дней. Оставшиеся дни не сгорают.`,
-        label: '6 месяцев',
+        title: 'Strongest OS — 6 месяцев режима',
+        description: `180 дней доступа к Strongest OS без ежемесячного продления. Новые дни добавляются к текущему сроку.`,
+        label: '6 месяцев доступа',
       };
     case 'yearly':
       return {
-        title: 'Strongest OS — 12 месяцев',
-        description: `Доступ к Strongest OS на ${periodDays} дней. Оставшиеся дни не сгорают.`,
-        label: '12 месяцев',
+        title: 'Strongest OS — Год Strongest',
+        description: `12 месяцев доступа к Strongest OS. Самый выгодный режим для постоянной прокачки.`,
+        label: '12 месяцев доступа',
       };
   }
 };

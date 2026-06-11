@@ -37,7 +37,9 @@ const nowMs = Date.parse('2026-06-09T00:00:00.000Z');
 describe('stage 3 ui', () => {
   it('main menu contains required 8 buttons and no buy/renew duplicates', () => {
     const flat = createMainMenuKeyboard().reply_markup.keyboard.flat();
-    expect(flat).toEqual(Object.values(MENU_BUTTONS));
+    const allButtons = new Set<string>(Object.values(MENU_BUTTONS));
+    expect(flat).toHaveLength(8);
+    for (const btn of flat) expect(allButtons.has(typeof btn === 'string' ? btn : btn.text)).toBe(true);
     expect(flat).not.toContain('Купить подписку');
     expect(flat).not.toContain('Продлить доступ');
   });

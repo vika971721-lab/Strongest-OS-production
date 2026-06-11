@@ -1,10 +1,10 @@
 export const MENU_BUTTONS = {
-  buyAccess: '🚀 Получить доступ',
+  buyAccess: '🚀 Запустить систему',
   myAccess: '👤 Мой аккаунт',
-  activateCoupon: '🎟 Промокод',
-  restoreAccess: '🔑 Восстановить доступ',
-  features: '📦 Что внутри',
+  features: '🎮 Что внутри',
   installation: '📲 Установить приложение',
+  activateCoupon: '🎟 Промокод',
+  restoreAccess: '🔑 Новый пароль',
   terms: '📄 Условия',
   support: '🆘 Поддержка',
 } as const;

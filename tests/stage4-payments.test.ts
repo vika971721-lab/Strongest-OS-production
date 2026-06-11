@@ -162,7 +162,7 @@ describe('stage 4 Telegram Stars payments', () => {
     expect(invoice.currency).toBe('XTR');
     expect(invoice.provider_token).toBe('');
     expect(invoice.prices).toHaveLength(1);
-    expect(invoice.prices[0]).toEqual({ label: 'Первый месяц', amount: 100 });
+    expect(invoice.prices[0]).toEqual({ label: 'Первый вход — 30 дней', amount: 100 });
   });
 
   it('reuses pending orders inside TTL and expires old orders without changing paid orders', async () => {
