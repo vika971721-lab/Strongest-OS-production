@@ -74,10 +74,7 @@ export const handlePlanScreen = async (ctx: BotContext, deps: UiDependencies): P
     ? state.kind === 'temporarily_unavailable'
       ? createRetryKeyboard()
       : createPlanKeyboard(false)
-    : createPlanSelectionKeyboard(
-        'trialUsed' in state ? state.trialUsed : false,
-        deps.env.pricing,
-      );
+    : createPlanSelectionKeyboard('trialUsed' in state ? state.trialUsed : false, deps.env.pricing);
   await ctx.reply(buildPlanMessage(state, deps.env.pricing), keyboard);
 };
 

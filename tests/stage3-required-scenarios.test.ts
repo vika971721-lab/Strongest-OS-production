@@ -220,14 +220,14 @@ describe('stage 3 required scenario coverage', () => {
   });
 
   it.each([
-    ['trial false', states.telegram_registered, 'Первый вход доступен один раз', 'за 100⭐', '3 месяца за 399'],
     [
-      'trial true active',
-      states.active,
-      'Выбери срок продления',
-      'новые дни добавятся сверху',
-      '',
+      'trial false',
+      states.telegram_registered,
+      'Первый вход доступен один раз',
+      'за 100⭐',
+      '3 месяца за 399',
     ],
+    ['trial true active', states.active, 'Выбери срок продления', 'новые дни добавятся сверху', ''],
     [
       'trial true expired',
       states.expired,
@@ -235,20 +235,8 @@ describe('stage 3 required scenario coverage', () => {
       'новые дни добавятся сверху',
       '',
     ],
-    [
-      'cancelled',
-      states.cancelled,
-      'Выбери срок продления',
-      'новые дни добавятся сверху',
-      '',
-    ],
-    [
-      'marked',
-      states.marked_for_deletion,
-      'Аккаунт ожидает удаления',
-      'отменит удаление',
-      '',
-    ],
+    ['cancelled', states.cancelled, 'Выбери срок продления', 'новые дни добавятся сверху', ''],
+    ['marked', states.marked_for_deletion, 'Аккаунт ожидает удаления', 'отменит удаление', ''],
     ['banned', states.banned, 'Оформление доступа недоступно', 'Обратись в поддержку', ''],
     ['deleted', states.deleted, 'Данные аккаунта удалены', 'перед созданием нового доступа', ''],
     ['broken', states.broken_link, 'Обнаружена проблема', 'Не создавай повторный', ''],

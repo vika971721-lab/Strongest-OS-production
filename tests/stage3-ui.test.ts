@@ -12,7 +12,10 @@ import {
   formatRemainingTime,
 } from '../src/utils/dates.js';
 import { createMainMenuKeyboard } from '../src/keyboards/mainMenuKeyboard.js';
-import { createPlanKeyboard, createPlanSelectionKeyboard } from '../src/keyboards/inlineKeyboards.js';
+import {
+  createPlanKeyboard,
+  createPlanSelectionKeyboard,
+} from '../src/keyboards/inlineKeyboards.js';
 import { createSupportLink, normalizeSupportUsername } from '../src/utils/telegram.js';
 import { editOrReply } from '../src/utils/delivery.js';
 import { DefaultAccessStateService } from '../src/services/accessStateService.js';
@@ -39,7 +42,8 @@ describe('stage 3 ui', () => {
     const flat = createMainMenuKeyboard().reply_markup.keyboard.flat();
     const allButtons = new Set<string>(Object.values(MENU_BUTTONS));
     expect(flat).toHaveLength(8);
-    for (const btn of flat) expect(allButtons.has(typeof btn === 'string' ? btn : btn.text)).toBe(true);
+    for (const btn of flat)
+      expect(allButtons.has(typeof btn === 'string' ? btn : btn.text)).toBe(true);
     expect(flat).not.toContain('Купить подписку');
     expect(flat).not.toContain('Продлить доступ');
   });
@@ -79,7 +83,9 @@ describe('stage 3 ui', () => {
   });
 
   it('plan selection keyboard: trialUsed=false shows 🔥 first entry, hides ⚡ 1 month', () => {
-    const kb = JSON.stringify(createPlanSelectionKeyboard(false, pricing).reply_markup.inline_keyboard);
+    const kb = JSON.stringify(
+      createPlanSelectionKeyboard(false, pricing).reply_markup.inline_keyboard,
+    );
     expect(kb).toContain('🔥 Первый вход');
     expect(kb).not.toContain('⚡ 1 месяц');
     expect(kb).toContain('🎯 3 месяца');
@@ -88,7 +94,9 @@ describe('stage 3 ui', () => {
   });
 
   it('plan selection keyboard: trialUsed=true shows ⚡ 1 month, hides 🔥 first entry', () => {
-    const kb = JSON.stringify(createPlanSelectionKeyboard(true, pricing).reply_markup.inline_keyboard);
+    const kb = JSON.stringify(
+      createPlanSelectionKeyboard(true, pricing).reply_markup.inline_keyboard,
+    );
     expect(kb).toContain('⚡ 1 месяц');
     expect(kb).not.toContain('🔥 Первый вход');
     expect(kb).toContain('🎯 3 месяца');

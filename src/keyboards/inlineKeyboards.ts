@@ -86,10 +86,34 @@ export const createCouponCancelKeyboard = () =>
 export const createPlanSelectionKeyboard = (trialUsed: boolean, pricing: PricingConfig) =>
   Markup.inlineKeyboard([
     ...(trialUsed
-      ? [[Markup.button.callback(`⚡ 1 месяц — ${pricing.renewalPeriodStars}⭐`, CALLBACK_DATA.planMonthly)]]
-      : [[Markup.button.callback(`🔥 Первый вход — ${pricing.firstPeriodStars}⭐`, CALLBACK_DATA.planMonthly)]]),
-    [Markup.button.callback(`🎯 3 месяца — ${pricing.threeMonthsStars}⭐ Рекомендуемый`, CALLBACK_DATA.planThreeMonths)],
-    [Markup.button.callback(`🛡 6 месяцев — ${pricing.sixMonthsStars}⭐`, CALLBACK_DATA.planSixMonths)],
+      ? [
+          [
+            Markup.button.callback(
+              `⚡ 1 месяц — ${pricing.renewalPeriodStars}⭐`,
+              CALLBACK_DATA.planMonthly,
+            ),
+          ],
+        ]
+      : [
+          [
+            Markup.button.callback(
+              `🔥 Первый вход — ${pricing.firstPeriodStars}⭐`,
+              CALLBACK_DATA.planMonthly,
+            ),
+          ],
+        ]),
+    [
+      Markup.button.callback(
+        `🎯 3 месяца — ${pricing.threeMonthsStars}⭐ Рекомендуемый`,
+        CALLBACK_DATA.planThreeMonths,
+      ),
+    ],
+    [
+      Markup.button.callback(
+        `🛡 6 месяцев — ${pricing.sixMonthsStars}⭐`,
+        CALLBACK_DATA.planSixMonths,
+      ),
+    ],
     [Markup.button.callback(`👑 12 месяцев — ${pricing.yearlyStars}⭐`, CALLBACK_DATA.planYearly)],
     [Markup.button.callback('◀️ Назад', CALLBACK_DATA.navMain)],
   ]);
@@ -103,11 +127,28 @@ export const createPlanConfirmKeyboard = (planCallback: string, amount: number) 
 export const createTrialUsedKeyboard = (pricing: PricingConfig, supportUsername?: string) => {
   const link = createSupportLink(supportUsername);
   return Markup.inlineKeyboard([
-    [Markup.button.callback(`⚡ 1 месяц — ${pricing.renewalPeriodStars}⭐`, CALLBACK_DATA.planMonthly)],
-    [Markup.button.callback(`🎯 3 месяца — ${pricing.threeMonthsStars}⭐ Рекомендуемый`, CALLBACK_DATA.planThreeMonths)],
-    [Markup.button.callback(`🛡 6 месяцев — ${pricing.sixMonthsStars}⭐`, CALLBACK_DATA.planSixMonths)],
+    [
+      Markup.button.callback(
+        `⚡ 1 месяц — ${pricing.renewalPeriodStars}⭐`,
+        CALLBACK_DATA.planMonthly,
+      ),
+    ],
+    [
+      Markup.button.callback(
+        `🎯 3 месяца — ${pricing.threeMonthsStars}⭐ Рекомендуемый`,
+        CALLBACK_DATA.planThreeMonths,
+      ),
+    ],
+    [
+      Markup.button.callback(
+        `🛡 6 месяцев — ${pricing.sixMonthsStars}⭐`,
+        CALLBACK_DATA.planSixMonths,
+      ),
+    ],
     [Markup.button.callback(`👑 12 месяцев — ${pricing.yearlyStars}⭐`, CALLBACK_DATA.planYearly)],
-    ...(link ? [[Markup.button.url('🆘 Поддержка', link)]] : [[Markup.button.callback('🆘 Поддержка', CALLBACK_DATA.navSupport)]]),
+    ...(link
+      ? [[Markup.button.url('🆘 Поддержка', link)]]
+      : [[Markup.button.callback('🆘 Поддержка', CALLBACK_DATA.navSupport)]]),
   ]);
 };
 
