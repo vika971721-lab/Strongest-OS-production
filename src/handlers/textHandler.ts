@@ -1,5 +1,9 @@
-import { CANCEL_BUTTON_TEXT, MENU_BUTTONS } from '../config/constants.js';
-import { createCouponSuccessKeyboard } from '../keyboards/inlineKeyboards.js';
+import { CANCEL_BUTTON_TEXT, MENU_BUTTONS, MENU_BUTTON_ALIASES } from '../config/constants.js';
+import {
+  createCouponRetryKeyboard,
+  createCouponStartMainKeyboard,
+  createCouponSuccessKeyboard,
+} from '../keyboards/inlineKeyboards.js';
 import { createMainMenuKeyboard } from '../keyboards/mainMenuKeyboard.js';
 import { requirePrivateChat } from '../middleware/privateChat.js';
 import {
@@ -51,7 +55,7 @@ export const handleTextMessage = async (
 
   const telegramId = ctx.state.user?.telegramId;
 
-  if (text === CANCEL_BUTTON_TEXT) {
+  if (text === CANCEL_BUTTON_TEXT || text === 'Отмена') {
     if (telegramId) await dependencies.conversationStore.clear(telegramId);
     await ctx.reply(MESSAGES.cancelled, createMainMenuKeyboard());
     return;
@@ -60,7 +64,10 @@ export const handleTextMessage = async (
   if (telegramId) {
     const state = await dependencies.conversationStore.get(telegramId);
     if (state?.name === 'awaiting_coupon') {
-      const menuButtonValues = new Set<string>(Object.values(MENU_BUTTONS));
+      const menuButtonValues = new Set<string>([
+        ...Object.values(MENU_BUTTONS),
+        ...Object.keys(MENU_BUTTON_ALIASES),
+      ]);
       if (menuButtonValues.has(text)) {
         await dependencies.conversationStore.clear(telegramId);
         // fall through to menu button handling below
@@ -69,7 +76,7 @@ export const handleTextMessage = async (
         await dependencies.conversationStore.clear(telegramId);
         if (isConversationExpired(state)) {
           await ctx.reply(
-            'Время ожидания закончилось. Нажмите “Активировать промокод” и попробуйте снова.',
+            'Время ожидания закончилось. Нажми “🎟 Промокод” и попробуй снова.',
             createMainMenuKeyboard(),
           );
           return;
@@ -129,24 +136,34 @@ export const handleTextMessage = async (
           return;
         }
         const replyByStatus: Record<typeof result.status, string> = {
-          not_found: 'Промокод не найден.\n\nПроверь код и отправь его ещё раз одним сообщением.',
+          not_found: 'Промокод не найден.\n\nПроверь код и отправь ещё раз одним сообщением.',
           already_redeemed:
-            'Этот промокод уже использован.\n\nДоступ по нему получил пользователь, который активировал код первым.',
-          expired: 'Срок действия этого промокода закончился.',
-          cancelled: 'Этот промокод был отменён.',
+            'Этот промокод уже использован.\n\nДоступ получил пользователь, который активировал код первым.',
+          expired:
+            'Срок действия промокода закончился.\n\nМожно выбрать тариф и открыть доступ через Telegram Stars.',
+          cancelled: 'Этот промокод отменён и больше не работает.',
           invalid_duration: 'Не удалось активировать промокод. Обратись в поддержку.',
           subscription_not_found: 'Не удалось активировать промокод. Обратись в поддержку.',
           banned: '⛔ Активация промокода недоступна — аккаунт ограничен. Обратись в поддержку.',
           deleted: 'Данные аккаунта удалены. Обратись в поддержку.',
           temporary_error: MESSAGES.couponNotConfigured,
         };
-        await ctx.reply(replyByStatus[result.status], createMainMenuKeyboard());
+        const retryStatuses = ['not_found'] as const;
+        const startStatuses = ['already_redeemed', 'expired', 'cancelled'] as const;
+        const keyboard = retryStatuses.includes(result.status as 'not_found')
+          ? createCouponRetryKeyboard()
+          : startStatuses.includes(result.status as 'already_redeemed' | 'expired' | 'cancelled')
+            ? createCouponStartMainKeyboard()
+            : createMainMenuKeyboard();
+        await ctx.reply(replyByStatus[result.status], keyboard);
         return;
       }
     }
   }
 
-  switch (text) {
+  const menuText = MENU_BUTTON_ALIASES[text] ? MENU_BUTTONS[MENU_BUTTON_ALIASES[text]] : text;
+
+  switch (menuText) {
     case '/menu':
       await handleMainMenu(ctx, dependencies);
       return;
