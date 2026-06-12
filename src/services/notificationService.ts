@@ -41,9 +41,9 @@ export interface TelegramDeliveryFailure {
 
 const notificationKeyboard = () =>
   Markup.inlineKeyboard([
-    [Markup.button.callback('Оформить доступ', CALLBACK_DATA.navPlans)],
-    [Markup.button.callback('Активировать промокод', CALLBACK_DATA.couponStart)],
-    [Markup.button.callback('Мой доступ', CALLBACK_DATA.navAccess)],
+    [Markup.button.callback('🚀 Запустить систему', CALLBACK_DATA.navPlans)],
+    [Markup.button.callback('🎟 Промокод', CALLBACK_DATA.couponStart)],
+    [Markup.button.callback('👤 Мой аккаунт', CALLBACK_DATA.navAccess)],
   ]);
 
 export const buildLifecycleNotificationText = (

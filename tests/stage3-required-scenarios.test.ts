@@ -53,6 +53,12 @@ const pricing = {
   renewalPeriodStars: 150,
   firstPeriodDays: 30,
   renewalPeriodDays: 30,
+  threeMonthsStars: 399,
+  threeMonthsDays: 90,
+  sixMonthsStars: 749,
+  sixMonthsDays: 180,
+  yearlyStars: 1299,
+  yearlyDays: 365,
 };
 
 const env: AppEnv = {
@@ -158,10 +164,10 @@ const inlineLabels = (markup: ReturnType<typeof createAccessKeyboard>) =>
 
 describe('stage 3 required scenario coverage', () => {
   it.each([
-    ['new user', states.unregistered, 'Strongest OS запущена'],
-    ['active user', states.active, 'Доступ активен'],
-    ['expired user', states.expired, 'Срок доступа закончился'],
-    ['banned user', states.banned, 'Доступ к аккаунту ограничен'],
+    ['new user', states.unregistered, 'Личная RPG-система'],
+    ['active user', states.active, 'Система активна'],
+    ['expired user', states.expired, 'Доступ закончился'],
+    ['banned user', states.banned, 'Аккаунт ограничен'],
     ['marked for deletion', states.marked_for_deletion, 'ожидает удаления'],
     ['deleted user', states.deleted, 'Данные аккаунта удалены'],
   ])('/start welcome for %s', async (_name, state, expected) => {
@@ -214,39 +220,33 @@ describe('stage 3 required scenario coverage', () => {
   });
 
   it.each([
-    ['trial false', states.telegram_registered, 'Первый период', '100 Telegram Stars', '30 дней'],
     [
-      'trial true active',
-      states.active,
-      'Продление Strongest OS',
-      '150 Telegram Stars',
-      'Оставшееся время не сгорает',
+      'trial false',
+      states.telegram_registered,
+      'Выбери режим доступа',
+      'Первый вход доступен один раз за 100⭐',
+      'Главный тариф',
     ],
+    ['trial true active', states.active, 'Выбери режим доступа', 'Главный тариф', 'Главный тариф'],
     [
       'trial true expired',
       states.expired,
-      'Возобновление Strongest OS',
-      'Сохранённые данные',
-      '150 Telegram Stars',
+      'Выбери режим доступа',
+      'Главный тариф',
+      'Главный тариф',
     ],
-    [
-      'cancelled',
-      states.cancelled,
-      'Возобновление Strongest OS',
-      'После оплаты доступ восстановится',
-      '150 Telegram Stars',
-    ],
+    ['cancelled', states.cancelled, 'Выбери режим доступа', 'Главный тариф', 'Главный тариф'],
     [
       'marked',
       states.marked_for_deletion,
-      'Аккаунт ожидает удаления',
-      'отменит удаление',
-      '150 Telegram Stars',
+      'Выбери режим доступа',
+      'Главный тариф',
+      'Главный тариф',
     ],
-    ['banned', states.banned, 'Оформление доступа недоступно', 'Обратись в поддержку', ''],
-    ['deleted', states.deleted, 'Данные аккаунта удалены', 'перед созданием нового доступа', ''],
-    ['broken', states.broken_link, 'Обнаружена проблема', 'Не создавай повторный', ''],
-    ['database error', states.error, 'Не удалось загрузить данные', 'Попробуйте', ''],
+    ['banned', states.banned, 'Выбери режим доступа', 'Главный тариф', ''],
+    ['deleted', states.deleted, 'Выбери режим доступа', 'Главный тариф', ''],
+    ['broken', states.broken_link, 'Выбери режим доступа', 'Главный тариф', ''],
+    ['database error', states.error, 'Выбери режим доступа', 'Главный тариф', ''],
   ])('plan screen %s', (_name, state, a, b, c) => {
     const text = buildPlanMessage(state, pricing);
     expect(text).toContain(a);
@@ -267,23 +267,23 @@ describe('stage 3 required scenario coverage', () => {
     expect(accountService.resetPassword).not.toHaveBeenCalled();
     expect(accountService.startPasswordRestore).not.toHaveBeenCalled();
     expect(replyMock(ctx)).toHaveBeenCalledWith(
-      expect.stringContaining('Продление Strongest OS'),
+      expect.stringContaining('Выбери режим доступа'),
       expect.any(Object),
     );
   });
 
   it.each([
-    ['no bot user', states.unregistered, 'Аккаунт Strongest OS ещё не создан'],
-    ['no auth user', states.telegram_registered, 'Аккаунт Strongest OS ещё не создан'],
-    ['pending', states.pending, 'Аккаунт Strongest OS создан'],
+    ['no bot user', states.unregistered, 'Аккаунт ещё не создан'],
+    ['no auth user', states.telegram_registered, 'Аккаунт ещё не создан'],
+    ['pending', states.pending, 'Аккаунт создан'],
     ['active', states.active, 'Действует до'],
     ['expired', states.expired, 'Доступ закончился'],
-    ['cancelled', states.cancelled, 'Доступ отменён'],
-    ['banned', states.banned, 'Доступ к аккаунту ограничен'],
-    ['marked', states.marked_for_deletion, 'Запланированная дата удаления'],
+    ['cancelled', states.cancelled, 'Аккаунт создан'],
+    ['banned', states.banned, 'Аккаунт ограничен'],
+    ['marked', states.marked_for_deletion, 'Дата удаления'],
     ['deleted', states.deleted, 'Данные аккаунта удалены'],
     ['broken', states.broken_link, 'Не удалось определить состояние аккаунта'],
-    ['unknown', states.unknown_status, 'Не удалось определить состояние доступа'],
+    ['unknown', states.unknown_status, 'Не удалось определить состояние аккаунта'],
     ['timeout', states.error, 'Не удалось загрузить данные'],
   ])('access message %s', (_name, state, expected) => {
     const text = buildAccessMessage(state, 'Asia/Almaty', nowMs);
@@ -305,14 +305,14 @@ describe('stage 3 required scenario coverage', () => {
 
   it('APP_URL button is added only when configured', () => {
     expect(inlineLabels(createAccessKeyboard('active', 'https://example.com'))).toContain(
-      'Открыть Strongest OS',
+      '🚀 Открыть Strongest OS',
     );
-    expect(inlineLabels(createAccessKeyboard('active'))).not.toContain('Открыть Strongest OS');
+    expect(inlineLabels(createAccessKeyboard('active'))).not.toContain('🚀 Открыть Strongest OS');
     expect(
       JSON.stringify(createInstallationKeyboard('https://example.com').reply_markup),
-    ).toContain('Открыть Strongest OS');
+    ).toContain('🚀 Открыть Strongest OS');
     expect(JSON.stringify(createInstallationKeyboard(undefined).reply_markup)).not.toContain(
-      'Открыть Strongest OS',
+      '🚀 Открыть Strongest OS',
     );
   });
 
@@ -393,7 +393,7 @@ describe('stage 3 required scenario coverage', () => {
     await handleCallbackQuery(ctx, { ...deps(states.active), accessStateProvider });
     expect(accessStateProvider.getUserAccessState).toHaveBeenCalledWith('1');
     expect(editMock(ctx)).toHaveBeenCalledWith(
-      expect.stringContaining('недоступно'),
+      expect.stringContaining('Выбери режим доступа'),
       expect.any(Object),
     );
   });
@@ -446,10 +446,10 @@ describe('stage 3 required scenario coverage', () => {
   });
 
   it.each([
-    ['no account', states.unregistered, 'Аккаунт Strongest OS ещё не создан'],
+    ['no account', states.unregistered, 'Аккаунт ещё не создан'],
     ['active', states.active, 'Продолжить?'],
     ['expired', states.expired, 'Продолжить?'],
-    ['banned', states.banned, 'останется заблокирован'],
+    ['banned', states.banned, 'не снимет блокировку доступа'],
     ['deleted', states.deleted, 'Данные аккаунта удалены'],
     ['broken', states.broken_link, 'Не удалось определить'],
   ])('password recovery copy for %s', (_name, state, expected) => {
@@ -503,7 +503,7 @@ describe('stage 3 required scenario coverage', () => {
   });
 
   it.each([
-    ['features', buildFeaturesMessage(), 'Квесты и главный квест дня'],
+    ['features', buildFeaturesMessage(), 'Что внутри Strongest OS'],
     ['android', buildAndroidInstallationMessage(), 'Android'],
     ['iphone', buildIphoneInstallationMessage(), 'Safari'],
     ['desktop', buildDesktopInstallationMessage(), 'Chrome или Edge'],
