@@ -1,51 +1,53 @@
 import type { PricingConfig } from '../config/pricing.js';
+import { getPaymentPlanMetadata } from '../config/pricing.js';
 import type { UserAccessState } from '../types/accessState.js';
+import type { PaymentPlan } from '../types/payment.js';
 import { assertNever } from './assertNever.js';
 import { formatDateTime, formatDeletionRemainingTime, formatRemainingTime } from './dates.js';
 import { escapeTelegramHtml } from './html.js';
 
 export const MESSAGES = {
-  temporaryError: 'Произошла временная ошибка. Попробуйте ещё раз через несколько секунд.',
-  dataLoadError: 'Не удалось загрузить данные. Попробуйте ещё раз через несколько секунд.',
-  unknown: 'Используйте кнопки меню для навигации.',
+  temporaryError: 'Временная ошибка.\n\nПопробуй ещё раз через несколько секунд.',
+  dataLoadError:
+    'Не удалось загрузить данные.\n\nПопробуй ещё раз. Если ошибка повторится — напиши в поддержку.',
+  unknown: 'Используй кнопки меню — так бот быстрее приведёт тебя к нужному действию.',
   adminReady:
     'Панель администратора подключена.\n\nФункции управления пользователями, платежами и купонами доступны через команды.',
   adminForbidden: 'Недостаточно прав.',
   privateChatRequired:
-    'Strongest OS работает только в личном чате с ботом.\n\nОткройте диалог и попробуйте ещё раз.',
+    'Strongest OS работает только в личном чате с ботом.\n\nОткрой личный диалог с ботом и попробуй снова.',
   cancelled: 'Действие отменено.',
   noActiveAction: 'Нет активного действия для отмены.',
-  staleButton: 'Эта кнопка устарела. Откройте главное меню.',
+  staleButton: 'Эта кнопка устарела.\n\nОткрой главное меню и выбери действие заново.',
   paymentNextStage: 'Оплата через Telegram Stars будет подключена на следующем этапе.',
-  couponNotConfigured: 'Не удалось проверить промокод. Попробуйте ещё раз через несколько секунд.',
-  couponTooManyAttempts: 'Слишком много попыток. Подождите несколько минут и попробуйте снова.',
-  couponInvalidInput: 'Отправьте промокод одним сообщением без лишних строк.',
-  passwordPrivateOnly: 'Восстановление пароля доступно только в личном чате с ботом.',
+  couponNotConfigured: 'Не удалось проверить промокод. Попробуй ещё раз через несколько секунд.',
+  couponTooManyAttempts: 'Слишком много попыток.\n\nПодожди несколько минут и попробуй снова.',
+  couponInvalidInput: 'Отправь промокод одним сообщением без лишних строк.',
+  passwordPrivateOnly: 'Новый пароль можно создать только в личном чате с ботом.',
 } as const;
 
 export const buildWelcomeMessage = (state: UserAccessState): string => {
   switch (state.kind) {
     case 'active':
-      return '⚡ С возвращением.\n\nДоступ активен. Квесты ждут. Продолжай двигаться вперёд.';
+      return '⚡ Система активна.\n\nДоступ открыт. Квесты ждут.\nЗаходи и продолжай держать режим.';
     case 'expired':
-      return 'С возвращением в Strongest OS.\n\nСрок доступа закончился. Данные временно сохранены.\n\nОформи новый период или активируй промокод, чтобы вернуться в систему.';
+      return '⛔ Доступ закончился.\n\nАккаунт сохранён временно. Чтобы вернуться к квестам, XP, streak и истории прогресса — продли доступ или активируй промокод.';
     case 'banned':
-      return '⛔ Доступ к аккаунту ограничен.\n\nОбратись в поддержку для уточнения причины.';
+      return '⛔ Аккаунт ограничен.\n\nДоступ к Strongest OS временно заблокирован.\nНапиши в поддержку, чтобы уточнить причину.';
     case 'marked_for_deletion':
-      return 'Аккаунт ожидает удаления.\n\nПока данные не удалены — можно восстановить доступ через оплату или промокод.';
+      return '⚠️ Аккаунт ожидает удаления.\n\nПока данные не удалены — можно восстановить доступ через оплату или промокод.';
     case 'deleted':
-      return 'Данные аккаунта удалены.\n\nОбратись в поддержку.';
+      return 'Данные аккаунта удалены.\n\nЕсли нужен разбор ситуации — напиши в поддержку.';
     case 'temporarily_unavailable':
       return MESSAGES.dataLoadError;
     case 'unknown_status':
-      return 'Не удалось определить состояние доступа. Обратись в поддержку.';
     case 'broken_link':
-      return 'Не удалось определить состояние аккаунта.\n\nОбратись в поддержку — не создавай новый аккаунт самостоятельно.';
+      return 'Не удалось определить состояние аккаунта.\n\nНапиши в поддержку. Не создавай новый аккаунт самостоятельно.';
     case 'unregistered':
     case 'telegram_registered':
     case 'account_pending':
     case 'cancelled':
-      return '🚀 Strongest OS запущена.\n\nЭто твоя система дисциплины: квесты, цели, прогресс и личная прокачка в одном месте.\n\nВыбери действие ниже.';
+      return '🚀 Strongest OS\n\nЛичная RPG-система для дисциплины и прогресса.\n\nВыполняй реальные задачи как квесты, получай XP, держи streak, прокачивай уровень и собирай свой день без хаоса.\n\nВыбери действие ниже.';
     default:
       return assertNever(state);
   }
@@ -62,29 +64,27 @@ export const buildAccessMessage = (
   switch (state.kind) {
     case 'unregistered':
     case 'telegram_registered':
-      return 'Аккаунт Strongest OS ещё не создан.\n\nОн появится автоматически после успешной оплаты или активации промокода.\n\n🚀 Оформи доступ — и бот выдаст логин с паролем.';
+      return 'Аккаунт ещё не создан.\n\nОн появится автоматически после оплаты или активации промокода.\nБот выдаст логин и пароль для входа в Strongest OS.';
     case 'account_pending':
-      return `Аккаунт Strongest OS создан, но активного доступа пока нет.\n\n🔐 Логин:\n${safeEmail(state.loginEmail)}\n\nОформи доступ или активируй промокод.`;
+    case 'cancelled':
+      return `Аккаунт создан, но активного доступа нет.\n\n🔐 Логин: ${safeEmail(state.loginEmail)}\n\nЧтобы вернуться в систему — оформи доступ или активируй промокод.`;
     case 'active':
-      return `✅ Доступ активен.\n\n📅 Действует до:\n${formatDateTime(state.expiresAt, timeZone)}\n\n⏳ Осталось:\n${formatRemainingTime(state.expiresAt, nowMs)}\n\n🔐 Логин:\n${safeEmail(state.loginEmail)}\n\nПродолжай держать систему. Один день — один шаг вперёд.`;
+      return `✅ Доступ активен.\n\n📅 Действует до: ${formatDateTime(state.expiresAt, timeZone)}\n\n⏳ Осталось: ${formatRemainingTime(state.expiresAt, nowMs)}\n\n🔐 Логин: ${safeEmail(state.loginEmail)}\n\nСистема открыта. Держи режим.`;
     case 'expired': {
       const deletion = state.deleteAfter
-        ? `До удаления данных осталось:\n${formatDeletionRemainingTime(state.deleteAfter, nowMs)}`
+        ? formatDeletionRemainingTime(state.deleteAfter, nowMs)
         : 'Дата удаления пока не назначена.';
-      return `⛔ Доступ закончился.\n\nСистема временно закрыта, но данные ещё сохранены.\n\n${deletion}\n\nЧтобы вернуться в Strongest OS, оформи новый период или активируй промокод.`;
+      return `⛔ Доступ закончился.\n\nСистема закрыта, но данные ещё сохранены.\n\nДо удаления данных осталось: ${deletion}\n\nПродли доступ или активируй промокод, чтобы вернуть аккаунт.`;
     }
-    case 'cancelled':
-      return '⛔ Доступ отменён.\n\nДанные сохранены. Оформи новый период или активируй промокод, чтобы вернуться.';
     case 'banned':
-      return '⛔ Доступ к аккаунту ограничен.\n\nОбратись в поддержку.';
+      return '⛔ Аккаунт ограничен.\n\nНапиши в поддержку, чтобы уточнить причину.';
     case 'marked_for_deletion':
-      return `Аккаунт ожидает удаления.\n\n📅 Запланированная дата удаления:\n${formatDateTime(state.deleteAfter, timeZone)}\n\nОсталось:\n${formatDeletionRemainingTime(state.deleteAfter, nowMs)}\n\nДо удаления можно восстановить доступ через оплату или промокод.`;
+      return `⚠️ Аккаунт ожидает удаления.\n\n📅 Дата удаления: ${formatDateTime(state.deleteAfter, timeZone)}\n\n⏳ Осталось: ${formatDeletionRemainingTime(state.deleteAfter, nowMs)}\n\nДо удаления можно восстановить доступ через оплату или промокод.`;
     case 'deleted':
-      return 'Данные аккаунта удалены.\n\nОбратись в поддержку.';
+      return 'Данные аккаунта удалены.\n\nВосстановить их через бота уже нельзя.\nЕсли нужен разбор ситуации — напиши в поддержку.';
     case 'broken_link':
-      return 'Не удалось определить состояние аккаунта.\n\nОбратись в поддержку — не создавай новый аккаунт самостоятельно.';
     case 'unknown_status':
-      return 'Не удалось определить состояние доступа. Обратись в поддержку.';
+      return 'Не удалось определить состояние аккаунта.\n\nНапиши в поддержку. Не создавай новый аккаунт самостоятельно.';
     case 'temporarily_unavailable':
       return MESSAGES.dataLoadError;
     default:
@@ -92,52 +92,23 @@ export const buildAccessMessage = (
   }
 };
 
-const firstPlan = (pricing: PricingConfig): string =>
-  `🚀 Первый период Strongest OS\n\nСрок: ${pricing.firstPeriodDays} дней\nСтоимость: ${pricing.firstPeriodStars} Telegram Stars\n\nПосле оплаты бот создаст аккаунт и выдаст логин с паролем.\n\nЗапускай систему, собирай день и двигайся без хаоса.`;
+export const buildPlanMessage = (_state: UserAccessState, pricing: PricingConfig): string =>
+  `🚀 Выбери режим доступа\n\nStrongest OS — это система для ежедневной прокачки: квесты, XP, уровни, streak, цели и история прогресса.\n\nПервый вход доступен один раз за ${pricing.firstPeriodStars}⭐.\nГлавный тариф — 3 месяца за ${pricing.threeMonthsStars ?? 399}⭐.`;
 
-const renewalPlan = (pricing: PricingConfig): string =>
-  `⚡ Продление Strongest OS\n\nСрок: +${pricing.renewalPeriodDays} дней\nСтоимость: ${pricing.renewalPeriodStars} Telegram Stars\n\nНовые дни добавятся к текущему сроку. Оставшееся время не сгорает.`;
-
-export const buildPlanMessage = (state: UserAccessState, pricing: PricingConfig): string => {
-  switch (state.kind) {
-    case 'unregistered':
-    case 'telegram_registered':
-      return firstPlan(pricing);
-    case 'account_pending':
-      return state.trialUsed ? renewalPlan(pricing) : firstPlan(pricing);
-    case 'active':
-      return state.trialUsed ? renewalPlan(pricing) : firstPlan(pricing);
-    case 'expired':
-    case 'cancelled':
-      return state.trialUsed
-        ? `⚡ Возобновление Strongest OS\n\nСрок: +${pricing.renewalPeriodDays} дней\nСтоимость: ${pricing.renewalPeriodStars} Telegram Stars\n\nПосле оплаты доступ восстановится. Сохранённые данные снова станут доступны.`
-        : firstPlan(pricing);
-    case 'marked_for_deletion':
-      return `Аккаунт ожидает удаления.\n\nОплата отменит удаление и восстановит доступ, если данные ещё не удалены.\n\n${state.trialUsed ? renewalPlan(pricing) : firstPlan(pricing)}`;
-    case 'banned':
-      return '⛔ Оформление доступа недоступно.\n\nАккаунт ограничен. Обратись в поддержку.';
-    case 'deleted':
-      return 'Данные аккаунта удалены.\n\nОбратись в поддержку перед созданием нового доступа.';
-    case 'broken_link':
-      return 'Обнаружена проблема со связью аккаунта.\n\nОбратись в поддержку. Не создавай повторный аккаунт самостоятельно.';
-    case 'unknown_status':
-      return 'Не удалось определить состояние доступа. Обратись в поддержку.';
-    case 'temporarily_unavailable':
-      return MESSAGES.dataLoadError;
-    default:
-      return assertNever(state);
-  }
+export const buildPlanConfirmationMessage = (pricing: PricingConfig, plan: PaymentPlan): string => {
+  const metadata = getPaymentPlanMetadata(pricing, plan);
+  return `Ты выбрал: ${metadata.title}\n\nСрок: ${metadata.periodLabel}\nСтоимость: ${metadata.amount} Telegram Stars\n\nПосле оплаты бот откроет доступ к Strongest OS.\nЕсли аккаунта ещё нет — бот создаст его и выдаст логин с паролем.`;
 };
 
 export const buildCouponPromptMessage = (): string =>
-  '🎟 Активация промокода\n\nОтправь код одним сообщением — без пробелов и лишних символов.\n\nПромокод одноразовый. Доступ получает тот, кто первым успешно активировал код.';
+  '🎟 Введи промокод\n\nОтправь код одним сообщением — без пробелов, лишних строк и символов.\n\nПромокод одноразовый.\nДоступ получает тот, кто активировал его первым.';
 
 export const buildCouponSuccessMessage = (
   days: number,
   expiresAt: Date | undefined,
   timeZone: string,
 ): string =>
-  `🎟 Промокод активирован.\n\nДобавлено:\n<b>${days} дней</b>\n\nНовый срок:\n${formatDateTime(expiresAt?.toISOString(), timeZone)}\n\nИспользуй это время с умом.`;
+  `🎟 Промокод активирован.\n\nДобавлено: ${days} дней\n\n📅 Новый срок доступа: ${formatDateTime(expiresAt?.toISOString(), timeZone)}\n\nВремя добавлено к текущему доступу. Дни не сгорели.`;
 
 export const buildCouponNewAccountSuccessMessage = (input: {
   days: number;
@@ -147,70 +118,71 @@ export const buildCouponNewAccountSuccessMessage = (input: {
   loginEmail: string;
   password: string;
 }): string =>
-  `🎟 Промокод активирован.\n\n🚀 Доступ к Strongest OS открыт.\n\nДобавлено: ${input.days} дней\n\n📅 Новый срок:\n${formatDateTime(input.expiresAt?.toISOString(), input.timeZone)}\n\n🌐 Ссылка:\n${escapeTelegramHtml(input.appUrl)}\n\n🔐 Логин:\n<code>${escapeTelegramHtml(input.loginEmail)}</code>\n\n🔑 Пароль:\n<code>${escapeTelegramHtml(input.password)}</code>\n\n<b>Сохрани пароль.</b> Бот показывает его только один раз.`;
+  `🎟 Промокод активирован.\n\nДоступ к Strongest OS открыт.\n\nДобавлено: ${input.days} дней\n📅 Доступ до: ${formatDateTime(input.expiresAt?.toISOString(), input.timeZone)}\n\n🌐 Вход: ${escapeTelegramHtml(input.appUrl)}\n\n🔐 Логин: <code>${escapeTelegramHtml(input.loginEmail)}</code>\n\n🔑 Пароль: <code>${escapeTelegramHtml(input.password)}</code>\n\nСохрани пароль сейчас. Бот показывает его только один раз.`;
 
 export const buildCouponAlreadyRedeemedByUserMessage = (
   expiresAt: Date | undefined,
   timeZone: string,
 ): string =>
-  `Этот промокод уже был активирован тобой.\n\nТекущий срок доступа:\n${formatDateTime(expiresAt?.toISOString(), timeZone)}`;
+  `Этот промокод уже был активирован тобой.\n\nТекущий срок доступа: ${formatDateTime(expiresAt?.toISOString(), timeZone)}`;
 
 export const buildCouponAlreadyRedeemedMessage = (): string =>
-  'Этот промокод уже использован.\n\nДоступ по нему получил пользователь, который активировал код первым.';
+  'Этот промокод уже использован.\n\nДоступ получил пользователь, который активировал код первым.';
 
 export const buildCouponNotFoundMessage = (): string =>
-  'Промокод не найден.\n\nПроверь код и отправь его ещё раз одним сообщением.';
+  'Промокод не найден.\n\nПроверь код и отправь ещё раз одним сообщением.';
 
 export const buildPasswordRecoveryMessage = (state: UserAccessState): string => {
   switch (state.kind) {
     case 'unregistered':
     case 'telegram_registered':
-      return 'Аккаунт Strongest OS ещё не создан.\n\nСначала оформи доступ или активируй промокод.';
+      return 'Аккаунт ещё не создан.\n\nСначала открой доступ через оплату или промокод.';
     case 'deleted':
-      return 'Данные аккаунта удалены.\n\nОбратись в поддержку.';
+      return 'Данные аккаунта удалены.\n\nЕсли нужен разбор ситуации — напиши в поддержку.';
     case 'broken_link':
     case 'unknown_status':
     case 'temporarily_unavailable':
-      return 'Не удалось определить состояние аккаунта.\n\nОбратись в поддержку.';
+      return 'Не удалось определить состояние аккаунта.\n\nНапиши в поддержку.';
     case 'banned':
-      return `🔑 Восстановление доступа\n\n🔐 Логин:\n${safeEmail(state.loginEmail)}\n\nСейчас бот создаст новый пароль. Старый пароль перестанет работать.\n\nВнимание: аккаунт ограничен — доступ останется заблокирован до снятия блокировки.\n\nПродолжить?`;
+      return `🔑 Новый пароль\n\n🔐 Логин: ${safeEmail(state.loginEmail)}\n\nБот создаст новый пароль.\nСтарый пароль перестанет работать.\n\nВнимание: аккаунт ограничен. Новый пароль не снимет блокировку доступа.\n\nПродолжить?`;
     case 'account_pending':
     case 'active':
     case 'expired':
     case 'cancelled':
     case 'marked_for_deletion':
-      return `🔑 Восстановление доступа\n\n🔐 Логин:\n${safeEmail(state.loginEmail)}\n\nСейчас бот создаст новый пароль. Старый пароль перестанет работать.\n\nПродолжить?`;
+      return `🔑 Новый пароль\n\n🔐 Логин: ${safeEmail(state.loginEmail)}\n\nБот создаст новый пароль.\nСтарый пароль перестанет работать.\n\nПродолжить?`;
     default:
       return assertNever(state);
   }
 };
 
 export const buildPasswordCreatedMessage = (loginEmail: string, password: string): string =>
-  `🔑 Новый пароль создан.\n\n🔐 Логин:\n${safeEmail(loginEmail)}\n\n🔑 Новый пароль:\n<code>${escapeTelegramHtml(password)}</code>\n\n<b>Сохрани его сразу.</b> Бот не хранит пароль и не сможет показать его повторно.`;
+  `🔑 Новый пароль создан.\n\n🔐 Логин: ${safeEmail(loginEmail)}\n\n🔑 Новый пароль: <code>${escapeTelegramHtml(password)}</code>\n\nСохрани его сейчас. Бот не покажет этот пароль повторно.`;
 
 export const buildFeaturesMessage = (): string =>
-  `📦 Что входит в Strongest OS\n\n🎯 Квесты и главный квест дня\nПланируй действия, выделяй одну главную задачу.\n\n📈 XP, уровни и ранги\nВизуальный прогресс за каждое выполненное действие.\n\n🏆 WSTшки и кейсы\nВнутренняя валюта за результаты, игровые награды.\n\n💪 Денежные цели\nФиксируй цель, срок и фактический прогресс.\n\n🧠 Шаблоны квестов\nГотовые задачи для продаж, спорта, обучения и здоровья.\n\n📅 Календарь и разбор дня\nИстория действий, сильные и слабые дни, личные выводы.\n\n🚀 PWA-приложение\nДобавь Strongest OS на главный экран и используй как приложение.`;
+  `🎮 Что внутри Strongest OS\n\n🎯 Квесты\nЗаписывай реальные задачи и выполняй их как квесты.\n\n🔥 Главный квест дня\nВыбирай одно главное действие, которое двигает день вперёд.\n\n📈 XP, уровни и ранги\nПолучай визуальный прогресс за выполненные действия.\n\n⚡ Streak\nДержи серию активных дней и не выпадай из режима.\n\n💰 Денежные цели\nФиксируй цель, срок и фактический прогресс.\n\n🧠 Разбор дня\nЗаписывай выводы, ошибки и сильные действия.\n\n📅 История и календарь\nВидь прошлые дни, результаты и динамику.\n\n📲 PWA-приложение\nДобавь Strongest OS на главный экран и используй как приложение.\n\nЭто не планер. Это система, которая помогает держать фокус и видеть прокачку каждый день.`;
 
-export const buildInstallationMessage = (): string => '📲 Выбери инструкцию для своей платформы.';
+export const buildInstallationMessage = (): string =>
+  '📲 Установка Strongest OS\n\nВыбери устройство.\nПосле установки Strongest OS будет открываться как обычное приложение с главного экрана.';
 
 export const buildAndroidInstallationMessage = (): string =>
-  'Как установить Strongest OS на Android\n\n1. Открой Strongest OS в Chrome.\n2. Войди по логину и паролю.\n3. Нажми меню браузера (три точки).\n4. Выбери «Установить приложение» или «Добавить на главный экран».\n5. Подтверди установку.\n\nИконка Strongest OS появится на главном экране.';
+  '🤖 Android / Chrome\n\n1. Открой Strongest OS в Chrome.\n2. Войди по логину и паролю.\n3. Нажми ⋮ в правом верхнем углу.\n4. Выбери “Установить приложение” или “Добавить на главный экран”.\n5. Подтверди установку.\n\nИконка Strongest OS появится на главном экране.';
 
 export const buildIphoneInstallationMessage = (): string =>
-  'Как установить Strongest OS на iPhone\n\n1. Открой Strongest OS в Safari (именно в Safari).\n2. Войди по логину и паролю.\n3. Нажми кнопку «Поделиться» внизу экрана.\n4. Выбери «На экран Домой».\n5. Подтверди добавление.\n\nStrongest OS появится на главном экране.';
+  '🍏 iPhone / Safari\n\n1. Открой Strongest OS в Safari.\n2. Войди по логину и паролю.\n3. Нажми “Поделиться” внизу экрана.\n4. Выбери “На экран Домой”.\n5. Подтверди добавление.\n\nИконка Strongest OS появится на главном экране.\n\nВажно: используй Safari, не встроенный браузер Telegram.';
 
 export const buildDesktopInstallationMessage = (): string =>
-  'Как установить Strongest OS на компьютер\n\n1. Открой Strongest OS в Chrome или Edge.\n2. Войди в аккаунт.\n3. Найди значок установки в адресной строке или открой меню браузера.\n4. Выбери «Установить Strongest OS».\n5. Подтверди установку.';
+  '💻 Компьютер\n\n1. Открой Strongest OS в Chrome или Edge.\n2. Войди в аккаунт.\n3. Нажми значок установки в адресной строке или открой меню браузера.\n4. Выбери “Установить Strongest OS”.\n5. Подтверди установку.\n\nПосле этого Strongest OS можно запускать как отдельное приложение.';
 
 export const buildTermsMessage = (): string =>
-  `Условия использования Strongest OS\n\n1. Доступ предоставляется на оплаченный период.\n\n2. Первый льготный тариф используется один раз на одного пользователя.\n\n3. Один стандартный период — 30 дней, если в тарифе не указано иное.\n\n4. При досрочном продлении новые дни добавляются к текущей дате окончания. Оставшееся время не сгорает.\n\n5. После окончания оплаченного периода доступ к приложению блокируется.\n\n6. Пользовательские данные могут храниться ещё 60 дней после окончания доступа.\n\n7. По истечении срока хранения данные могут быть удалены без возможности восстановления.\n\n8. Промокоды являются одноразовыми.\n\n9. Промокод можно передать другому человеку.\n\n10. Доступ по промокоду получает тот пользователь, который первым успешно активировал код.\n\n11. Передача логина и пароля от аккаунта третьим лицам запрещена.\n\n12. Администрация может ограничить доступ при злоупотреблениях, попытках обхода оплаты или нарушении работы сервиса.\n\n13. Telegram Stars используются для оплаты цифрового доступа внутри Telegram.\n\n14. Нажимая кнопку оплаты, пользователь подтверждает согласие с условиями.`;
+  `📄 Условия Strongest OS\n\n1. Доступ открывается на оплаченный период.\n2. Первый вход за 100⭐ доступен один раз на пользователя.\n3. Продление добавляется к текущему сроку. Оставшиеся дни не сгорают.\n4. После окончания периода доступ к приложению блокируется.\n5. Данные аккаунта могут храниться до 60 дней после окончания доступа.\n6. После срока хранения данные могут быть удалены без восстановления.\n7. Промокоды одноразовые.\n8. Доступ по промокоду получает тот, кто активировал его первым.\n9. Telegram Stars используются для оплаты цифрового доступа внутри Telegram.\n10. Нажимая кнопку оплаты, пользователь соглашается с этими условиями.\n11. Передавать логин и пароль третьим лицам запрещено.\n12. При злоупотреблениях доступ может быть ограничен.`;
 
 export const buildPrivacyMessage = (): string =>
-  'Strongest OS обрабатывает только данные, необходимые для работы аккаунта и подписки:\n\n— Telegram ID;\n— Telegram username, если указан;\n— имя профиля Telegram;\n— технический логин Strongest OS;\n— статус и срок доступа;\n— история платёжных событий;\n— история использования промокодов.\n\nПароль не хранится в открытом виде.\n\nСервис использует Supabase для авторизации и хранения данных.\n\nДанные могут быть удалены по истечении срока хранения.';
+  '🔒 Конфиденциальность\n\nStrongest OS хранит только данные, нужные для работы аккаунта и доступа:\n\n— Telegram ID;\n— username, если он указан;\n— имя профиля Telegram;\n— технический логин Strongest OS;\n— статус и срок доступа;\n— историю оплат;\n— историю промокодов.\n\nПароль не хранится в открытом виде.\nЕсли доступ закончился, данные могут быть удалены после срока хранения.';
 
 export const buildSupportMessage = (configured: boolean): string =>
   configured
-    ? '🆘 Поддержка Strongest OS\n\nОпиши проблему одним сообщением. Если есть скриншот — приложи его сразу.\n\nНе отправляй никому пароль от аккаунта.'
+    ? '🆘 Поддержка Strongest OS\n\nОпиши проблему одним сообщением.\nЕсли есть скриншот — приложи сразу.\n\nНе отправляй никому пароль от аккаунта.'
     : 'Контакт поддержки пока не настроен.';
 
 export const buildHelpMessage = (isAdmin: boolean): string =>

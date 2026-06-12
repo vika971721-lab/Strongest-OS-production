@@ -2,8 +2,12 @@ import { Markup } from 'telegraf';
 import type { Context } from 'telegraf';
 import { randomBytes } from 'node:crypto';
 import type { AppEnv } from '../config/env.js';
-import type { PricingConfig } from '../config/pricing.js';
+import { getPaymentPlanMetadata, type PricingConfig } from '../config/pricing.js';
 import { CALLBACK_DATA } from '../config/constants.js';
+import {
+  createInvoiceFailedKeyboard,
+  createPaymentProblemKeyboard,
+} from '../keyboards/inlineKeyboards.js';
 import type { PaymentEventRepository } from '../repositories/paymentEventRepository.js';
 import type { PaymentOrderRepository } from '../repositories/paymentOrderRepository.js';
 import type { UserAccessState } from '../types/accessState.js';
@@ -138,10 +142,10 @@ export const createOpaqueToken = (prefix: string): string =>
 export const addDays = (base: Date, days: number): Date =>
   new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
 
-export const getPlanConfig = (pricing: PricingConfig, plan: PaymentPlan): PlanConfig =>
-  plan === 'first_month'
-    ? { plan, amount: pricing.firstPeriodStars, periodDays: pricing.firstPeriodDays }
-    : { plan, amount: pricing.renewalPeriodStars, periodDays: pricing.renewalPeriodDays };
+export const getPlanConfig = (pricing: PricingConfig, plan: PaymentPlan): PlanConfig => {
+  const metadata = getPaymentPlanMetadata(pricing, plan);
+  return { plan, amount: metadata.amount, periodDays: metadata.periodDays };
+};
 
 export const determinePaymentPlan = (state: UserAccessState): PaymentPlan | { blocked: string } => {
   if (state.kind === 'banned') return { blocked: 'banned' };
@@ -152,17 +156,34 @@ export const determinePaymentPlan = (state: UserAccessState): PaymentPlan | { bl
   return state.trialUsed ? 'monthly_renewal' : 'first_month';
 };
 
-export const buildTelegramStarsInvoice = (order: PaymentOrder): InvoiceSpec => {
-  const first = order.plan === 'first_month';
+export const buildTelegramStarsInvoice = (
+  order: PaymentOrder,
+  pricing?: PricingConfig,
+): InvoiceSpec => {
+  const metadata = getPaymentPlanMetadata(
+    pricing ?? {
+      firstPeriodStars: order.plan === 'first_month' ? order.amount : 100,
+      firstPeriodDays: order.plan === 'first_month' ? order.periodDays : 30,
+      renewalPeriodStars: order.plan === 'monthly_renewal' ? order.amount : 150,
+      renewalPeriodDays: order.plan === 'monthly_renewal' ? order.periodDays : 30,
+      threeMonthsStars: order.plan === 'three_months' ? order.amount : 399,
+      threeMonthsDays: order.plan === 'three_months' ? order.periodDays : 90,
+      sixMonthsStars: order.plan === 'six_months' ? order.amount : 749,
+      sixMonthsDays: order.plan === 'six_months' ? order.periodDays : 180,
+      yearlyStars: order.plan === 'yearly' ? order.amount : 1299,
+      yearlyDays: order.plan === 'yearly' ? order.periodDays : 365,
+    },
+    order.plan,
+  );
   return {
-    title: first ? 'Strongest OS — первый период' : 'Strongest OS — продление',
-    description: first
-      ? `Доступ к Strongest OS на ${order.periodDays} дней. После оплаты бот создаст аккаунт и отправит логин и пароль.`
-      : `Продление доступа Strongest OS ещё на ${order.periodDays} дней. Оставшиеся дни не сгорают.`,
+    title: metadata?.invoiceTitle ?? `Strongest OS — ${order.plan}`,
+    description:
+      metadata?.invoiceDescription ??
+      `Доступ к Strongest OS на ${order.periodDays} дней. Новые дни добавляются к текущему сроку.`,
     payload: order.providerInvoicePayload,
     provider_token: TELEGRAM_STARS_PROVIDER_TOKEN,
     currency: TELEGRAM_STARS_CURRENCY,
-    prices: [{ label: first ? 'Первый период' : 'Продление', amount: order.amount }],
+    prices: [{ label: metadata?.invoicePriceLabel ?? 'Доступ Strongest OS', amount: order.amount }],
   };
 };
 
@@ -203,13 +224,20 @@ export const ensurePaymentOrder = async (input: {
   orderRepository: PaymentOrderRepository;
   ttlMinutes: number;
   now?: Date;
+  plan?: PaymentPlan;
 }): Promise<
   { ok: true; order: PaymentOrder; reused: boolean } | { ok: false; message: string }
 > => {
   const now = input.now ?? new Date();
   const state = await input.accessGateway.getAccessState(input.telegramId);
-  const plan = determinePaymentPlan(state);
+  const plan = input.plan ?? determinePaymentPlan(state);
   if (typeof plan !== 'string') return { ok: false, message: paymentBlockedMessage(plan.blocked) };
+  if (plan === 'first_month' && state.kind !== 'temporarily_unavailable' && state.trialUsed) {
+    return {
+      ok: false,
+      message: 'Первый вход за 100⭐ уже использован. Выбери обычный тариф для продления.',
+    };
+  }
   const planConfig = getPlanConfig(input.pricing, plan);
   const pending = await input.orderRepository.findRecentPendingOrder(
     input.telegramId,
@@ -280,7 +308,10 @@ export const validatePreCheckout = async (input: {
   if (typeof currentPlan !== 'string')
     return { ok: false, message: paymentBlockedMessage(currentPlan.blocked) };
   if (order.plan === 'first_month' && currentPlan !== 'first_month') {
-    return { ok: false, message: 'Первый тариф уже использован. Создайте счёт на продление.' };
+    return {
+      ok: false,
+      message: 'Первый вход за 100⭐ уже использован. Выбери обычный тариф для продления.',
+    };
   }
   return { ok: true, order };
 };
@@ -415,27 +446,26 @@ const successfulPaymentMessage = (input: {
     ? formatDateTime(input.result.expiresAt, input.timezone)
     : 'уточняется';
   if (input.result.status === 'manual_review') {
-    return '⚠️ Оплата получена, но доступ требует ручной проверки.\n\nНапишите в поддержку и не оплачивайте повторно.';
+    return '⚠️ Оплата получена, но требует ручной проверки.\n\nНе оплачивай повторно.\nНапиши в поддержку — проверим платёж и откроем доступ вручную.';
   }
   if (input.result.status === 'duplicate') {
-    return `✅ Эта оплата уже была обработана.\n\nТекущий доступ активен до:\n${expires}`;
+    return `✅ Эта оплата уже обработана.\n\nТекущий доступ активен до: ${expires}`;
   }
   if (input.result.accountCreated && input.result.password) {
-    const appLine = input.appUrl ? `\n🌐 Ссылка:\n${escapeTelegramHtml(input.appUrl)}\n` : '';
-    return `🚀 Доступ активирован.\n\nStrongest OS запущена. Теперь у тебя есть система: квесты, цели, прогресс и дисциплина в одном месте.\n\nЗаходи, собирай день и прокачивай себя без хаоса.\n${appLine}\n🔐 Логин:\n<code>${input.result.loginEmail ? escapeTelegramHtml(input.result.loginEmail) : 'уточняется'}</code>\n\n🔑 Пароль:\n<code>${escapeTelegramHtml(input.result.password)}</code>\n\n📅 Доступ активен до:\n${expires}\n\n<b>Сохрани пароль.</b> Бот показывает его только один раз.\n\nЕсли потеряешь — создай новый через «Восстановить доступ».`;
+    const appLine = input.appUrl ? `\n🌐 Вход: ${escapeTelegramHtml(input.appUrl)}\n` : '';
+    return `🚀 Доступ открыт.\n\nStrongest OS запущена. Теперь у тебя есть личная система: квесты, XP, уровни, streak, цели и история прогресса.\n${appLine}\n🔐 Логин: <code>${input.result.loginEmail ? escapeTelegramHtml(input.result.loginEmail) : 'уточняется'}</code>\n\n🔑 Пароль: <code>${escapeTelegramHtml(input.result.password)}</code>\n\n📅 Доступ активен до: ${expires}\n\nСохрани пароль сейчас. Бот показывает его только один раз.\nЕсли потеряешь — создай новый через “🔑 Новый пароль”.`;
   }
-  if (input.order.plan === 'monthly_renewal') {
-    return `⚡ Доступ продлён.\n\nДобавлено: <b>${input.order.periodDays} дней</b>\n\nНовая дата окончания:\n${expires}\n\nОставшиеся дни сохранены. Продолжай двигаться вперёд. 💪`;
+  if (input.order.plan === 'yearly') {
+    return `👑 Год Strongest активирован.\n\nДоступ открыт на 12 месяцев.\n\nНовая дата окончания: ${expires}\n\nСистема твоя. Заходи, собирай день и держи прогресс.`;
   }
-  const appLine = input.appUrl ? `\n🌐 Ссылка:\n${escapeTelegramHtml(input.appUrl)}\n` : '';
-  return `🚀 Доступ активирован.\n${appLine}\n🔐 Логин:\n<code>${input.result.loginEmail ? escapeTelegramHtml(input.result.loginEmail) : 'уточняется'}</code>\n\n📅 Доступ активен до:\n${expires}\n\nЕсли потерял пароль — создай новый через «Восстановить доступ».`;
+  return `⚡ Доступ продлён.\n\nДобавлено: ${input.order.periodDays} дней\nНовая дата окончания: ${expires}\n\nОставшиеся дни не сгорели.\nВозвращайся в систему и держи режим.`;
 };
 
 export const createPaymentResultKeyboard = (appUrl?: string) => {
   const rows = [];
-  if (appUrl) rows.push([Markup.button.url('Открыть Strongest OS', appUrl)]);
-  rows.push([Markup.button.callback('Мой доступ', CALLBACK_DATA.navAccess)]);
-  rows.push([Markup.button.callback('Как установить приложение', CALLBACK_DATA.navInstall)]);
+  if (appUrl) rows.push([Markup.button.url('🚀 Открыть Strongest OS', appUrl)]);
+  rows.push([Markup.button.callback('📲 Установить приложение', CALLBACK_DATA.navInstall)]);
+  rows.push([Markup.button.callback('👤 Мой аккаунт', CALLBACK_DATA.navAccess)]);
   return Markup.inlineKeyboard(rows);
 };
 
@@ -444,6 +474,7 @@ export const handleCreatePaymentInvoice = async (input: {
   env: AppEnv;
   accessGateway: PaymentAccessGateway;
   orderRepository: PaymentOrderRepository;
+  plan?: PaymentPlan;
 }): Promise<void> => {
   if (input.ctx.chat?.type !== 'private') {
     await input.ctx.reply('Оплата доступна только в личном чате с ботом.');
@@ -471,12 +502,13 @@ export const handleCreatePaymentInvoice = async (input: {
     accessGateway: input.accessGateway,
     orderRepository: input.orderRepository,
     ttlMinutes: input.env.paymentOrderTtlMinutes ?? 15,
+    ...(input.plan ? { plan: input.plan } : {}),
   });
   if (!ensured.ok) {
     await input.ctx.reply(ensured.message);
     return;
   }
-  const invoice = buildTelegramStarsInvoice(ensured.order);
+  const invoice = buildTelegramStarsInvoice(ensured.order, input.env.pricing);
   try {
     await input.ctx.telegram.sendInvoice(input.ctx.chat.id, invoice);
     await input.orderRepository.markPending(ensured.order.orderId);
@@ -487,7 +519,10 @@ export const handleCreatePaymentInvoice = async (input: {
       { err: normalizeError(error), telegramId, orderId: ensured.order.orderId },
       'invoice_send_failed',
     );
-    await input.ctx.reply('Не удалось отправить счёт. Попробуйте позже.');
+    await input.ctx.reply(
+      'Не удалось отправить счёт.\n\nПопробуй ещё раз через несколько секунд. Если ошибка повторится — напиши в поддержку.',
+      createInvoiceFailedKeyboard(),
+    );
   }
 };
 
@@ -593,13 +628,15 @@ export const handleSuccessfulPayment = async (input: {
   const order = await input.orderRepository.findByInvoicePayload(payment.invoice_payload);
   if (!order || order.telegramId !== telegramId) {
     await input.ctx.reply(
-      'Оплата получена, но заказ не найден. Напишите в поддержку и не оплачивайте повторно.',
+      '⚠️ Оплата получена, но заказ не найден.\n\nНе оплачивай повторно.\nНапиши в поддержку — проверим вручную.',
+      createPaymentProblemKeyboard(input.env.supportUsername),
     );
     return;
   }
   if (payment.currency !== TELEGRAM_STARS_CURRENCY || payment.total_amount !== order.amount) {
     await input.ctx.reply(
-      'Оплата получена, но параметры платежа требуют ручной проверки. Напишите в поддержку.',
+      '⚠️ Оплата получена, но параметры платежа требуют проверки.\n\nНе оплачивай повторно.\nНапиши в поддержку.',
+      createPaymentProblemKeyboard(input.env.supportUsername),
     );
     return;
   }

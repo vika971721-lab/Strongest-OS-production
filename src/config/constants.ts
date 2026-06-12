@@ -1,15 +1,24 @@
 export const MENU_BUTTONS = {
-  buyAccess: '🚀 Оформить доступ',
-  myAccess: '👤 Мой доступ',
-  activateCoupon: '🎟 Активировать промокод',
-  restoreAccess: '🔑 Восстановить доступ',
-  features: '📦 Что входит',
-  installation: '📲 Как установить приложение',
+  buyAccess: '🚀 Запустить систему',
+  myAccess: '👤 Мой аккаунт',
+  features: '🎮 Что внутри',
+  installation: '📲 Установить приложение',
+  activateCoupon: '🎟 Промокод',
+  restoreAccess: '🔑 Новый пароль',
   terms: '📄 Условия',
   support: '🆘 Поддержка',
 } as const;
 
-export const CANCEL_BUTTON_TEXT = 'Отмена';
+export const MENU_BUTTON_ALIASES: Record<string, keyof typeof MENU_BUTTONS> = {
+  '🚀 Оформить доступ': 'buyAccess',
+  '👤 Мой доступ': 'myAccess',
+  '🎟 Активировать промокод': 'activateCoupon',
+  '🔑 Восстановить доступ': 'restoreAccess',
+  '📦 Что входит': 'features',
+  '📲 Как установить приложение': 'installation',
+};
+
+export const CANCEL_BUTTON_TEXT = '❌ Отмена';
 
 export const CALLBACK_DATA = {
   navMain: 'nav:main',
@@ -32,7 +41,6 @@ export const CALLBACK_DATA = {
   accountResetCancel: 'account:reset:cancel',
   couponStart: 'coupon:start',
   couponCancel: 'coupon:cancel',
-  // Backward-compatible aliases for older tests/messages.
   testPayment: 'pay:next-stage',
   installAndroid: 'nav:install:android',
   installIphone: 'nav:install:ios',
@@ -49,5 +57,5 @@ export const PUBLIC_BOT_COMMANDS = [
 ] as const;
 
 export const COUPON_STATE_TTL_MS = 10 * 60 * 1000;
-export const RATE_LIMIT_MESSAGE = 'Подождите несколько секунд';
+export const RATE_LIMIT_MESSAGE = 'Подожди несколько секунд.';
 export const TELEGRAM_HTML_PARSE_MODE = 'HTML' as const;

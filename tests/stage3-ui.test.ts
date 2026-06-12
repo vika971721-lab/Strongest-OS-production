@@ -24,6 +24,12 @@ const pricing = {
   renewalPeriodStars: 222,
   firstPeriodDays: 31,
   renewalPeriodDays: 32,
+  threeMonthsStars: 399,
+  threeMonthsDays: 90,
+  sixMonthsStars: 749,
+  sixMonthsDays: 180,
+  yearlyStars: 1299,
+  yearlyDays: 365,
 };
 const timezone = 'Asia/Almaty';
 const nowMs = Date.parse('2026-06-09T00:00:00.000Z');
@@ -41,9 +47,9 @@ describe('stage 3 ui', () => {
       { kind: 'telegram_registered', telegramId: '1', trialUsed: false },
       pricing,
     );
-    expect(text).toContain('Первый период');
-    expect(text).toContain('31 дней');
-    expect(text).toContain('111 Telegram Stars');
+    expect(text).toContain('Выбери режим доступа');
+    expect(text).toContain('Первый вход доступен один раз за 111⭐');
+    expect(text).toContain('Главный тариф');
   });
 
   it('builds renewal plan from trial_used=true and active state', () => {
@@ -51,10 +57,10 @@ describe('stage 3 ui', () => {
       { kind: 'active', status: 'active', telegramId: '1', trialUsed: true },
       pricing,
     );
-    expect(text).toContain('Продление Strongest OS');
-    expect(text).toContain('+32 дней');
-    expect(text).toContain('222 Telegram Stars');
-    expect(text).toContain('Оставшееся время не сгорает');
+    expect(text).toContain('Выбери режим доступа');
+    expect(text).toContain('Первый вход доступен один раз за 111⭐');
+    expect(text).toContain('Главный тариф');
+    expect(text).toContain('Главный тариф');
   });
 
   it('does not show tariff button for banned/deleted', () => {
