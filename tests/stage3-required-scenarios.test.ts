@@ -53,6 +53,12 @@ const pricing = {
   renewalPeriodStars: 150,
   firstPeriodDays: 30,
   renewalPeriodDays: 30,
+  threeMonthsStars: 300,
+  threeMonthsDays: 90,
+  sixMonthsStars: 600,
+  sixMonthsDays: 180,
+  yearlyStars: 1200,
+  yearlyDays: 365,
 };
 
 const env: AppEnv = {
@@ -214,35 +220,23 @@ describe('stage 3 required scenario coverage', () => {
   });
 
   it.each([
-    ['trial false', states.telegram_registered, 'Первый период', '100 Telegram Stars', '30 дней'],
     [
-      'trial true active',
-      states.active,
-      'Продление Strongest OS',
-      '150 Telegram Stars',
-      'Оставшееся время не сгорает',
+      'trial false',
+      states.telegram_registered,
+      'Первый вход доступен один раз',
+      'за 100⭐',
+      '3 месяца за 399',
     ],
+    ['trial true active', states.active, 'Выбери срок продления', 'новые дни добавятся сверху', ''],
     [
       'trial true expired',
       states.expired,
-      'Возобновление Strongest OS',
-      'Сохранённые данные',
-      '150 Telegram Stars',
+      'Выбери срок продления',
+      'новые дни добавятся сверху',
+      '',
     ],
-    [
-      'cancelled',
-      states.cancelled,
-      'Возобновление Strongest OS',
-      'После оплаты доступ восстановится',
-      '150 Telegram Stars',
-    ],
-    [
-      'marked',
-      states.marked_for_deletion,
-      'Аккаунт ожидает удаления',
-      'отменит удаление',
-      '150 Telegram Stars',
-    ],
+    ['cancelled', states.cancelled, 'Выбери срок продления', 'новые дни добавятся сверху', ''],
+    ['marked', states.marked_for_deletion, 'Аккаунт ожидает удаления', 'отменит удаление', ''],
     ['banned', states.banned, 'Оформление доступа недоступно', 'Обратись в поддержку', ''],
     ['deleted', states.deleted, 'Данные аккаунта удалены', 'перед созданием нового доступа', ''],
     ['broken', states.broken_link, 'Обнаружена проблема', 'Не создавай повторный', ''],
@@ -267,7 +261,7 @@ describe('stage 3 required scenario coverage', () => {
     expect(accountService.resetPassword).not.toHaveBeenCalled();
     expect(accountService.startPasswordRestore).not.toHaveBeenCalled();
     expect(replyMock(ctx)).toHaveBeenCalledWith(
-      expect.stringContaining('Продление Strongest OS'),
+      expect.stringContaining('Выбери срок продления'),
       expect.any(Object),
     );
   });

@@ -12,7 +12,10 @@ import {
   formatRemainingTime,
 } from '../src/utils/dates.js';
 import { createMainMenuKeyboard } from '../src/keyboards/mainMenuKeyboard.js';
-import { createPlanKeyboard } from '../src/keyboards/inlineKeyboards.js';
+import {
+  createPlanKeyboard,
+  createPlanSelectionKeyboard,
+} from '../src/keyboards/inlineKeyboards.js';
 import { createSupportLink, normalizeSupportUsername } from '../src/utils/telegram.js';
 import { editOrReply } from '../src/utils/delivery.js';
 import { DefaultAccessStateService } from '../src/services/accessStateService.js';
@@ -24,6 +27,12 @@ const pricing = {
   renewalPeriodStars: 222,
   firstPeriodDays: 31,
   renewalPeriodDays: 32,
+  threeMonthsStars: 300,
+  threeMonthsDays: 90,
+  sixMonthsStars: 600,
+  sixMonthsDays: 180,
+  yearlyStars: 1200,
+  yearlyDays: 365,
 };
 const timezone = 'Asia/Almaty';
 const nowMs = Date.parse('2026-06-09T00:00:00.000Z');
@@ -31,30 +40,30 @@ const nowMs = Date.parse('2026-06-09T00:00:00.000Z');
 describe('stage 3 ui', () => {
   it('main menu contains required 8 buttons and no buy/renew duplicates', () => {
     const flat = createMainMenuKeyboard().reply_markup.keyboard.flat();
-    expect(flat).toEqual(Object.values(MENU_BUTTONS));
+    const allButtons = new Set<string>(Object.values(MENU_BUTTONS));
+    expect(flat).toHaveLength(8);
+    for (const btn of flat)
+      expect(allButtons.has(typeof btn === 'string' ? btn : btn.text)).toBe(true);
     expect(flat).not.toContain('Купить подписку');
     expect(flat).not.toContain('Продлить доступ');
   });
 
-  it('builds first plan from pricing config', () => {
+  it('builds plan screen for new user (trialUsed=false)', () => {
     const text = buildPlanMessage(
       { kind: 'telegram_registered', telegramId: '1', trialUsed: false },
       pricing,
     );
-    expect(text).toContain('Первый период');
-    expect(text).toContain('31 дней');
-    expect(text).toContain('111 Telegram Stars');
+    expect(text).toContain('Первый вход доступен один раз');
+    expect(text).toContain('3 месяца за 399');
   });
 
-  it('builds renewal plan from trial_used=true and active state', () => {
+  it('builds plan screen for returning user (trialUsed=true)', () => {
     const text = buildPlanMessage(
       { kind: 'active', status: 'active', telegramId: '1', trialUsed: true },
       pricing,
     );
-    expect(text).toContain('Продление Strongest OS');
-    expect(text).toContain('+32 дней');
-    expect(text).toContain('222 Telegram Stars');
-    expect(text).toContain('Оставшееся время не сгорает');
+    expect(text).toContain('Выбери срок продления');
+    expect(text).toContain('новые дни добавятся сверху');
   });
 
   it('does not show tariff button for banned/deleted', () => {
@@ -71,6 +80,28 @@ describe('stage 3 ui', () => {
     expect(JSON.stringify(createPlanKeyboard(false).reply_markup.inline_keyboard)).toContain(
       'Поддержка',
     );
+  });
+
+  it('plan selection keyboard: trialUsed=false shows 🔥 first entry, hides ⚡ 1 month', () => {
+    const kb = JSON.stringify(
+      createPlanSelectionKeyboard(false, pricing).reply_markup.inline_keyboard,
+    );
+    expect(kb).toContain('🔥 Первый вход');
+    expect(kb).not.toContain('⚡ 1 месяц');
+    expect(kb).toContain('🎯 3 месяца');
+    expect(kb).toContain('🛡 6 месяцев');
+    expect(kb).toContain('👑 12 месяцев');
+  });
+
+  it('plan selection keyboard: trialUsed=true shows ⚡ 1 month, hides 🔥 first entry', () => {
+    const kb = JSON.stringify(
+      createPlanSelectionKeyboard(true, pricing).reply_markup.inline_keyboard,
+    );
+    expect(kb).toContain('⚡ 1 месяц');
+    expect(kb).not.toContain('🔥 Первый вход');
+    expect(kb).toContain('🎯 3 месяца');
+    expect(kb).toContain('🛡 6 месяцев');
+    expect(kb).toContain('👑 12 месяцев');
   });
 
   it('renders active and expired access safely', () => {
