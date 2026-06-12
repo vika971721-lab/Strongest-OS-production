@@ -22,6 +22,12 @@ const env: AppEnv = {
     renewalPeriodStars: 150,
     firstPeriodDays: 30,
     renewalPeriodDays: 30,
+    threeMonthsStars: 399,
+    threeMonthsDays: 90,
+    sixMonthsStars: 749,
+    sixMonthsDays: 180,
+    yearlyStars: 1299,
+    yearlyDays: 365,
   },
 };
 
@@ -55,7 +61,7 @@ describe('handlers', () => {
     const ctx = createTextCtx('unknown');
     await handleTextMessage(ctx, deps());
     expect(ctx.reply).toHaveBeenCalledWith(
-      'Используйте кнопки меню для навигации.',
+      'Используй кнопки меню — так бот быстрее приведёт тебя к нужному действию.',
       expect.any(Object),
     );
   });
@@ -83,7 +89,7 @@ describe('handlers', () => {
       accessStateProvider({ kind: 'active', status: 'active', telegramId: '1', trialUsed: true }),
     );
     expect(ctx.reply).toHaveBeenCalledWith(
-      expect.stringContaining('Доступ активен'),
+      expect.stringContaining('Система активна'),
       expect.any(Object),
     );
     expect(ctx.reply).not.toHaveBeenCalledWith(

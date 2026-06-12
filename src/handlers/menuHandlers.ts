@@ -5,8 +5,11 @@ import {
   createCouponCancelKeyboard,
   createFeaturesKeyboard,
   createInstallationKeyboard,
+  createInstallationBackKeyboard,
+  createPasswordNoAccountKeyboard,
   createPasswordRecoveryKeyboard,
   createPlanKeyboard,
+  createPrivacyKeyboard,
   createRetryKeyboard,
   createSupportKeyboard,
   createTermsKeyboard,
@@ -70,7 +73,9 @@ export const handlePlanScreen = async (ctx: BotContext, deps: UiDependencies): P
     'temporarily_unavailable',
   ].includes(state.kind);
   const keyboard =
-    state.kind === 'temporarily_unavailable' ? createRetryKeyboard() : createPlanKeyboard(canPay);
+    state.kind === 'temporarily_unavailable'
+      ? createRetryKeyboard()
+      : createPlanKeyboard(canPay, deps.env.pricing);
   await ctx.reply(buildPlanMessage(state, deps.env.pricing), keyboard);
 };
 
@@ -137,13 +142,17 @@ export const handlePasswordRecovery = async (
   ].includes(state.kind);
   await ctx.reply(
     buildPasswordRecoveryMessage(state),
-    allowReset ? createPasswordRecoveryKeyboard() : createSupportKeyboard(deps.env.supportUsername),
+    allowReset
+      ? createPasswordRecoveryKeyboard()
+      : state.kind === 'unregistered' || state.kind === 'telegram_registered'
+        ? createPasswordNoAccountKeyboard()
+        : createSupportKeyboard(deps.env.supportUsername),
   );
 };
 
 export const handleFeatures = async (ctx: BotContext, deps: UiDependencies): Promise<void> => {
   logger.info({ telegramId: telegramIdFromContext(ctx) }, 'features_opened');
-  await ctx.reply(buildFeaturesMessage(), createFeaturesKeyboard(deps.env.appUrl));
+  await ctx.reply(buildFeaturesMessage(), createFeaturesKeyboard());
 };
 
 export const handleInstallation = async (ctx: BotContext, deps: UiDependencies): Promise<void> => {
@@ -159,15 +168,15 @@ export const handleInstallation = async (ctx: BotContext, deps: UiDependencies):
 };
 
 export const handleInstallationAndroid = async (ctx: BotContext): Promise<void> => {
-  await ctx.reply(buildAndroidInstallationMessage());
+  await ctx.reply(buildAndroidInstallationMessage(), createInstallationBackKeyboard());
 };
 
 export const handleInstallationIos = async (ctx: BotContext): Promise<void> => {
-  await ctx.reply(buildIphoneInstallationMessage());
+  await ctx.reply(buildIphoneInstallationMessage(), createInstallationBackKeyboard());
 };
 
 export const handleInstallationDesktop = async (ctx: BotContext): Promise<void> => {
-  await ctx.reply(buildDesktopInstallationMessage());
+  await ctx.reply(buildDesktopInstallationMessage(), createInstallationBackKeyboard());
 };
 
 export const handleTerms = async (ctx: BotContext): Promise<void> => {
@@ -177,7 +186,7 @@ export const handleTerms = async (ctx: BotContext): Promise<void> => {
 
 export const handlePrivacy = async (ctx: BotContext): Promise<void> => {
   logger.info({ telegramId: telegramIdFromContext(ctx) }, 'privacy_opened');
-  await ctx.reply(buildPrivacyMessage());
+  await ctx.reply(buildPrivacyMessage(), createPrivacyKeyboard());
 };
 
 export const handleSupport = async (ctx: BotContext, deps: UiDependencies): Promise<void> => {

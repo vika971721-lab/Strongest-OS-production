@@ -1,6 +1,11 @@
 export type PaymentProviderName = 'mock' | 'telegram_stars';
 export type PaymentStatus = 'unavailable' | 'pending' | 'paid' | 'failed';
-export type PaymentPlan = 'first_month' | 'monthly_renewal';
+export type PaymentPlan =
+  | 'first_month'
+  | 'monthly_renewal'
+  | 'three_months'
+  | 'six_months'
+  | 'yearly';
 export type PaymentOrderStatus =
   | 'created'
   | 'pending'

@@ -2,8 +2,11 @@ import { CALLBACK_DATA, type CallbackData } from '../config/constants.js';
 import {
   createFeaturesKeyboard,
   createInstallationKeyboard,
+  createInstallationBackKeyboard,
   createPasswordCreatedKeyboard,
+  createPlanConfirmationKeyboard,
   createPlanKeyboard,
+  createPrivacyKeyboard,
   createRetryKeyboard,
   createSupportKeyboard,
   createTermsKeyboard,
@@ -24,8 +27,10 @@ import {
   buildSupportMessage,
   buildTermsMessage,
   MESSAGES,
+  buildPlanConfirmationMessage,
 } from '../utils/messages.js';
 import { handleCreatePaymentInvoice, processPaymentEvent } from '../services/paymentFlow.js';
+import { getPaymentPlanMetadata, isPaymentPlan } from '../config/pricing.js';
 import { formatDateTime } from '../utils/dates.js';
 import {
   handleAccessScreen,
@@ -39,12 +44,49 @@ import {
 
 const callbackValues = new Set<string>(Object.values(CALLBACK_DATA));
 const isCallbackData = (value: string): value is CallbackData => callbackValues.has(value);
+const parsePlanCallback = (value: string) => {
+  const match = /^plan:(.+)$/.exec(value);
+  const plan = match?.[1];
+  return plan && isPaymentPlan(plan) ? plan : undefined;
+};
+const parsePaymentCallback = (value: string) => {
+  const match = /^pay:create:(.+)$/.exec(value);
+  const plan = match?.[1];
+  return plan && isPaymentPlan(plan) ? plan : undefined;
+};
 
 export const handleCallbackQuery = async (ctx: BotContext, deps: UiDependencies): Promise<void> => {
   const callbackQuery = ctx.callbackQuery;
   if (!callbackQuery || !('data' in callbackQuery)) return;
   const data = callbackQuery.data;
   await ctx.answerCbQuery();
+
+  const selectedPlan = parsePlanCallback(data);
+  if (selectedPlan) {
+    const metadata = getPaymentPlanMetadata(deps.env.pricing, selectedPlan);
+    await editOrReply(
+      ctx,
+      buildPlanConfirmationMessage(deps.env.pricing, selectedPlan),
+      createPlanConfirmationKeyboard(selectedPlan, metadata.amount),
+    );
+    return;
+  }
+
+  const paymentPlan = parsePaymentCallback(data);
+  if (paymentPlan) {
+    if (!deps.paymentAccessGateway || !deps.paymentOrderRepository) {
+      await editOrReply(ctx, MESSAGES.paymentNextStage);
+      return;
+    }
+    await handleCreatePaymentInvoice({
+      ctx,
+      env: deps.env,
+      accessGateway: deps.paymentAccessGateway,
+      orderRepository: deps.paymentOrderRepository,
+      plan: paymentPlan,
+    });
+    return;
+  }
 
   if (!isCallbackData(data)) {
     logger.warn({ telegramId: ctx.state.user?.telegramId }, 'unknown_callback_received');
@@ -77,12 +119,12 @@ export const handleCallbackQuery = async (ctx: BotContext, deps: UiDependencies)
         buildPlanMessage(state, deps.env.pricing),
         state.kind === 'temporarily_unavailable'
           ? createRetryKeyboard()
-          : createPlanKeyboard(canPay),
+          : createPlanKeyboard(canPay, deps.env.pricing),
       );
       return;
     }
     case CALLBACK_DATA.navFeatures:
-      await editOrReply(ctx, buildFeaturesMessage(), createFeaturesKeyboard(deps.env.appUrl));
+      await editOrReply(ctx, buildFeaturesMessage(), createFeaturesKeyboard());
       return;
     case CALLBACK_DATA.navInstall:
       await editOrReply(
@@ -92,19 +134,31 @@ export const handleCallbackQuery = async (ctx: BotContext, deps: UiDependencies)
       );
       return;
     case CALLBACK_DATA.navInstallAndroid:
-      await editOrReply(ctx, buildAndroidInstallationMessage());
+      await editOrReply(
+        ctx,
+        buildAndroidInstallationMessage(),
+        createInstallationBackKeyboard(deps.env.appUrl),
+      );
       return;
     case CALLBACK_DATA.navInstallIos:
-      await editOrReply(ctx, buildIphoneInstallationMessage());
+      await editOrReply(
+        ctx,
+        buildIphoneInstallationMessage(),
+        createInstallationBackKeyboard(deps.env.appUrl),
+      );
       return;
     case CALLBACK_DATA.navInstallDesktop:
-      await editOrReply(ctx, buildDesktopInstallationMessage());
+      await editOrReply(
+        ctx,
+        buildDesktopInstallationMessage(),
+        createInstallationBackKeyboard(deps.env.appUrl),
+      );
       return;
     case CALLBACK_DATA.navTerms:
       await editOrReply(ctx, buildTermsMessage(), createTermsKeyboard());
       return;
     case CALLBACK_DATA.navPrivacy:
-      await editOrReply(ctx, buildPrivacyMessage());
+      await editOrReply(ctx, buildPrivacyMessage(), createPrivacyKeyboard());
       return;
     case CALLBACK_DATA.navSupport:
       await handleSupport(ctx, deps);
@@ -218,6 +272,6 @@ const handleCheckLastPayment = async (ctx: BotContext, deps: UiDependencies): Pr
     return;
   }
   await ctx.reply(
-    'Оплата обработана. Откройте раздел “Мой доступ”, чтобы увидеть актуальный срок.',
+    'Оплата обработана. Открой раздел “👤 Мой аккаунт”, чтобы увидеть актуальный срок.',
   );
 };
