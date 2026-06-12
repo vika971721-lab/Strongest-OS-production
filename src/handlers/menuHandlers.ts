@@ -75,7 +75,7 @@ export const handlePlanScreen = async (ctx: BotContext, deps: UiDependencies): P
   const keyboard =
     state.kind === 'temporarily_unavailable'
       ? createRetryKeyboard()
-      : createPlanKeyboard(canPay, deps.env.pricing);
+      : createPlanKeyboard(canPay, deps.env.pricing, state.trialUsed);
   await ctx.reply(buildPlanMessage(state, deps.env.pricing), keyboard);
 };
 
@@ -150,7 +150,7 @@ export const handlePasswordRecovery = async (
   );
 };
 
-export const handleFeatures = async (ctx: BotContext, deps: UiDependencies): Promise<void> => {
+export const handleFeatures = async (ctx: BotContext, _deps: UiDependencies): Promise<void> => {
   logger.info({ telegramId: telegramIdFromContext(ctx) }, 'features_opened');
   await ctx.reply(buildFeaturesMessage(), createFeaturesKeyboard());
 };

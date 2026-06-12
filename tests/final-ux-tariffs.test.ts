@@ -6,7 +6,7 @@ import { createPlanKeyboard } from '../src/keyboards/inlineKeyboards.js';
 import { createMainMenuKeyboard } from '../src/keyboards/mainMenuKeyboard.js';
 import { buildTelegramStarsInvoice, getPlanConfig } from '../src/services/paymentFlow.js';
 import type { PaymentOrder, PaymentPlan } from '../src/types/payment.js';
-import { buildFeaturesMessage } from '../src/utils/messages.js';
+import { buildFeaturesMessage, buildFirstMonthUsedMessage } from '../src/utils/messages.js';
 
 const pricing = {
   firstPeriodStars: 100,
@@ -77,20 +77,35 @@ describe('final UX and tariffs', () => {
       expect(getPlanConfig(pricing, plan)).toEqual({ plan, ...expectedPlanConfig[plan] });
   });
 
-  it('renders plan screen buttons with recommended three-month tariff', () => {
-    const labels = createPlanKeyboard(true, pricing)
+  it('renders dynamic plan buttons for users who have not used first entry', () => {
+    const labels = createPlanKeyboard(true, pricing, false)
       .reply_markup.inline_keyboard.flat()
       .map((button) => ('text' in button ? button.text : ''));
     expect(labels).toEqual(
       expect.arrayContaining([
         '🔥 Первый вход — 100⭐',
         '🎯 3 месяца — 399⭐ Рекомендуемый',
-        '⚡ 1 месяц — 150⭐',
         '🛡 6 месяцев — 749⭐',
         '👑 12 месяцев — 1299⭐',
       ]),
     );
+    expect(labels).not.toContain('⚡ 1 месяц — 150⭐');
     expect(getPaymentPlanMetadata(pricing, 'three_months').recommended).toBe(true);
+  });
+
+  it('renders dynamic plan buttons for users with trial_used=true', () => {
+    const labels = createPlanKeyboard(true, pricing, true)
+      .reply_markup.inline_keyboard.flat()
+      .map((button) => ('text' in button ? button.text : ''));
+    expect(labels).toEqual(
+      expect.arrayContaining([
+        '⚡ 1 месяц — 150⭐',
+        '🎯 3 месяца — 399⭐ Рекомендуемый',
+        '🛡 6 месяцев — 749⭐',
+        '👑 12 месяцев — 1299⭐',
+      ]),
+    );
+    expect(labels).not.toContain('🔥 Первый вход — 100⭐');
   });
 
   it('uses selected-plan invoice titles, descriptions, and labels', () => {
@@ -107,8 +122,8 @@ describe('final UX and tariffs', () => {
   });
 
   it('keeps first-month one-time guard and marks any paid plan as trial used in Supabase gateway code', () => {
-    expect(readFileSync('src/services/paymentFlow.ts', 'utf8')).toContain(
-      'Первый вход за 100⭐ уже использован',
+    expect(buildFirstMonthUsedMessage()).toBe(
+      'Первый вход за 100⭐ уже использован.\n\nВыбери обычный тариф для продления.',
     );
     expect(readFileSync('src/services/supabasePaymentAccessGateway.ts', 'utf8')).toContain(
       'const trialUsed = true;',

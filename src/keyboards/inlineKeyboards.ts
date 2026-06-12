@@ -9,23 +9,34 @@ const urlButton = (label: string, url: string | undefined) =>
 const compact = <T>(items: (T | undefined)[]): T[] =>
   items.filter((item): item is T => item !== undefined);
 
-export const createPlanKeyboard = (canPay: boolean, pricing?: PricingConfig) => {
+export const createPlanKeyboard = (canPay: boolean, pricing?: PricingConfig, trialUsed = false) => {
   if (!canPay || !pricing) {
     return Markup.inlineKeyboard([
       [Markup.button.callback('🆘 Поддержка', CALLBACK_DATA.navSupport)],
     ]);
   }
-  const rows = [
-    ['first_month'],
-    ['three_months'],
-    ['monthly_renewal'],
-    ['six_months'],
-    ['yearly'],
-  ].map(([plan]) => {
-    const metadata = getPaymentPlanMetadata(pricing, plan as PaymentPlan);
+  const visiblePlans: PaymentPlan[] = [
+    trialUsed ? 'monthly_renewal' : 'first_month',
+    'three_months',
+    'six_months',
+    'yearly',
+  ];
+  const rows = visiblePlans.map((plan) => {
+    const metadata = getPaymentPlanMetadata(pricing, plan);
     return [Markup.button.callback(metadata.buttonLabel, `plan:${plan}`)];
   });
   rows.push([Markup.button.callback('🎮 Что внутри', CALLBACK_DATA.navFeatures)]);
+  rows.push([Markup.button.callback('🆘 Поддержка', CALLBACK_DATA.navSupport)]);
+  return Markup.inlineKeyboard(rows);
+};
+
+export const createFirstMonthUsedKeyboard = (pricing: PricingConfig) => {
+  const rows = (['monthly_renewal', 'three_months', 'six_months', 'yearly'] as PaymentPlan[]).map(
+    (plan) => {
+      const metadata = getPaymentPlanMetadata(pricing, plan);
+      return [Markup.button.callback(metadata.buttonLabel, `plan:${plan}`)];
+    },
+  );
   rows.push([Markup.button.callback('🆘 Поддержка', CALLBACK_DATA.navSupport)]);
   return Markup.inlineKeyboard(rows);
 };
