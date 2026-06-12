@@ -5,6 +5,7 @@ import {
   createInstallationBackKeyboard,
   createPasswordCreatedKeyboard,
   createPlanConfirmationKeyboard,
+  createFirstMonthUsedKeyboard,
   createPlanKeyboard,
   createPrivacyKeyboard,
   createRetryKeyboard,
@@ -28,6 +29,7 @@ import {
   buildTermsMessage,
   MESSAGES,
   buildPlanConfirmationMessage,
+  buildFirstMonthUsedMessage,
 } from '../utils/messages.js';
 import { handleCreatePaymentInvoice, processPaymentEvent } from '../services/paymentFlow.js';
 import { getPaymentPlanMetadata, isPaymentPlan } from '../config/pricing.js';
@@ -63,6 +65,18 @@ export const handleCallbackQuery = async (ctx: BotContext, deps: UiDependencies)
 
   const selectedPlan = parsePlanCallback(data);
   if (selectedPlan) {
+    const telegramId = ctx.state.user?.telegramId;
+    if (selectedPlan === 'first_month' && telegramId) {
+      const state = await deps.accessStateProvider.getUserAccessState(telegramId);
+      if (state.kind !== 'temporarily_unavailable' && state.trialUsed) {
+        await editOrReply(
+          ctx,
+          buildFirstMonthUsedMessage(),
+          createFirstMonthUsedKeyboard(deps.env.pricing),
+        );
+        return;
+      }
+    }
     const metadata = getPaymentPlanMetadata(deps.env.pricing, selectedPlan);
     await editOrReply(
       ctx,
@@ -119,7 +133,7 @@ export const handleCallbackQuery = async (ctx: BotContext, deps: UiDependencies)
         buildPlanMessage(state, deps.env.pricing),
         state.kind === 'temporarily_unavailable'
           ? createRetryKeyboard()
-          : createPlanKeyboard(canPay, deps.env.pricing),
+          : createPlanKeyboard(canPay, deps.env.pricing, state.trialUsed),
       );
       return;
     }

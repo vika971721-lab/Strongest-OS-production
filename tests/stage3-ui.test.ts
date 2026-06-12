@@ -58,9 +58,9 @@ describe('stage 3 ui', () => {
       pricing,
     );
     expect(text).toContain('Выбери режим доступа');
-    expect(text).toContain('Первый вход доступен один раз за 111⭐');
-    expect(text).toContain('Главный тариф');
-    expect(text).toContain('Главный тариф');
+    expect(text).toContain('Выбери срок продления');
+    expect(text).toContain('новые дни добавятся сверху');
+    expect(text).not.toContain('Первый вход доступен один раз за 111⭐');
   });
 
   it('does not show tariff button for banned/deleted', () => {

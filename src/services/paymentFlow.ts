@@ -5,6 +5,7 @@ import type { AppEnv } from '../config/env.js';
 import { getPaymentPlanMetadata, type PricingConfig } from '../config/pricing.js';
 import { CALLBACK_DATA } from '../config/constants.js';
 import {
+  createFirstMonthUsedKeyboard,
   createInvoiceFailedKeyboard,
   createPaymentProblemKeyboard,
 } from '../keyboards/inlineKeyboards.js';
@@ -21,6 +22,7 @@ import type {
 import { formatDateTime } from '../utils/dates.js';
 import { logger, normalizeError } from '../utils/logger.js';
 import { escapeTelegramHtml } from '../utils/html.js';
+import { buildFirstMonthUsedMessage } from '../utils/messages.js';
 
 export const TELEGRAM_STARS_PROVIDER = 'telegram_stars' as const;
 export const TELEGRAM_STARS_CURRENCY = 'XTR' as const;
@@ -235,7 +237,7 @@ export const ensurePaymentOrder = async (input: {
   if (plan === 'first_month' && state.kind !== 'temporarily_unavailable' && state.trialUsed) {
     return {
       ok: false,
-      message: 'Первый вход за 100⭐ уже использован. Выбери обычный тариф для продления.',
+      message: buildFirstMonthUsedMessage(),
     };
   }
   const planConfig = getPlanConfig(input.pricing, plan);
@@ -310,7 +312,7 @@ export const validatePreCheckout = async (input: {
   if (order.plan === 'first_month' && currentPlan !== 'first_month') {
     return {
       ok: false,
-      message: 'Первый вход за 100⭐ уже использован. Выбери обычный тариф для продления.',
+      message: buildFirstMonthUsedMessage(),
     };
   }
   return { ok: true, order };
@@ -505,6 +507,10 @@ export const handleCreatePaymentInvoice = async (input: {
     ...(input.plan ? { plan: input.plan } : {}),
   });
   if (!ensured.ok) {
+    if (input.plan === 'first_month') {
+      await input.ctx.reply(ensured.message, createFirstMonthUsedKeyboard(input.env.pricing));
+      return;
+    }
     await input.ctx.reply(ensured.message);
     return;
   }

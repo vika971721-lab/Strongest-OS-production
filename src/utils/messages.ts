@@ -92,8 +92,21 @@ export const buildAccessMessage = (
   }
 };
 
-export const buildPlanMessage = (_state: UserAccessState, pricing: PricingConfig): string =>
-  `🚀 Выбери режим доступа\n\nStrongest OS — это система для ежедневной прокачки: квесты, XP, уровни, streak, цели и история прогресса.\n\nПервый вход доступен один раз за ${pricing.firstPeriodStars}⭐.\nГлавный тариф — 3 месяца за ${pricing.threeMonthsStars ?? 399}⭐.`;
+export const buildPlanMessage = (state: UserAccessState, pricing: PricingConfig): string => {
+  const intro =
+    '🚀 Выбери режим доступа\n\nStrongest OS — это система для ежедневной прокачки: квесты, XP, уровни, streak, цели и история прогресса.';
+
+  const trialUsed = 'trialUsed' in state && state.trialUsed;
+
+  if (trialUsed) {
+    return `${intro}\n\nВыбери срок продления. Если доступ уже активен — новые дни добавятся сверху.`;
+  }
+
+  return `${intro}\n\nПервый вход доступен один раз за ${pricing.firstPeriodStars}⭐.\nГлавный тариф — 3 месяца за ${pricing.threeMonthsStars ?? 399}⭐.`;
+};
+
+export const buildFirstMonthUsedMessage = (): string =>
+  'Первый вход за 100⭐ уже использован.\n\nВыбери обычный тариф для продления.';
 
 export const buildPlanConfirmationMessage = (pricing: PricingConfig, plan: PaymentPlan): string => {
   const metadata = getPaymentPlanMetadata(pricing, plan);

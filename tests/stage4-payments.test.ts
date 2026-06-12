@@ -26,6 +26,14 @@ const pricing = {
   yearlyDays: 365,
 };
 
+const planConfigByPlan: Record<PaymentPlan, { amount: number; periodDays: number }> = {
+  first_month: { amount: pricing.firstPeriodStars, periodDays: pricing.firstPeriodDays },
+  monthly_renewal: { amount: pricing.renewalPeriodStars, periodDays: pricing.renewalPeriodDays },
+  three_months: { amount: pricing.threeMonthsStars, periodDays: pricing.threeMonthsDays },
+  six_months: { amount: pricing.sixMonthsStars, periodDays: pricing.sixMonthsDays },
+  yearly: { amount: pricing.yearlyStars, periodDays: pricing.yearlyDays },
+};
+
 class FakeGateway implements PaymentAccessGateway {
   state: UserAccessState = { kind: 'telegram_registered', telegramId: '1', trialUsed: false };
   accountCalls = 0;
@@ -165,6 +173,27 @@ describe('stage 4 Telegram Stars payments', () => {
     expect(invoice.prices[0]).toEqual({ label: 'Первый вход — 30 дней', amount: 100 });
   });
 
+  it('does not create first_month invoice order when trial_used=true', async () => {
+    const orders = new InMemoryPaymentOrderRepository();
+    const gateway = new FakeGateway();
+    gateway.state = { kind: 'active', telegramId: '1', status: 'active', trialUsed: true };
+
+    const ensured = await ensurePaymentOrder({
+      telegramId: '1',
+      pricing,
+      accessGateway: gateway,
+      orderRepository: orders,
+      ttlMinutes: 15,
+      plan: 'first_month',
+    });
+
+    expect(ensured).toEqual({
+      ok: false,
+      message: 'Первый вход за 100⭐ уже использован.\n\nВыбери обычный тариф для продления.',
+    });
+    expect(await orders.findRecentPendingOrder('1', 'first_month', 15, new Date())).toBeUndefined();
+  });
+
   it('reuses pending orders inside TTL and expires old orders without changing paid orders', async () => {
     const orders = new InMemoryPaymentOrderRepository();
     const gateway = new FakeGateway();
@@ -274,7 +303,7 @@ describe('stage 4 Telegram Stars payments', () => {
       }),
     ).resolves.toEqual({
       ok: false,
-      message: 'Первый вход за 100⭐ уже использован. Выбери обычный тариф для продления.',
+      message: 'Первый вход за 100⭐ уже использован.\n\nВыбери обычный тариф для продления.',
     });
     await expect(
       validatePreCheckout({
@@ -363,6 +392,37 @@ describe('stage 4 Telegram Stars payments', () => {
       await events.findByProviderEventId('charge-2:first_month_race_converted_to_renewal'),
     ).toBeDefined();
     expect(gateway.extendCalls).toBe(2);
+  });
+
+  it('marks trial_used=true after successful payment of any paid plan', async () => {
+    for (const plan of [
+      'first_month',
+      'monthly_renewal',
+      'three_months',
+      'six_months',
+      'yearly',
+    ] as const) {
+      const orders = new InMemoryPaymentOrderRepository();
+      const events = new InMemoryPaymentEventRepository();
+      const gateway = new FakeGateway();
+      const order = await orders.createOrder({
+        telegramId: '1',
+        plan,
+        amount: planConfigByPlan[plan].amount,
+        periodDays: planConfigByPlan[plan].periodDays,
+      });
+
+      await processPaymentEvent({
+        order,
+        providerEventId: `charge-${plan}`,
+        rawPayload,
+        eventRepository: events,
+        orderRepository: orders,
+        accessGateway: gateway,
+      });
+
+      expect('trialUsed' in gateway.state && gateway.state.trialUsed).toBe(true);
+    }
   });
 
   it('does manual review for banned/deleted successful payment and supports partial failure retry', async () => {
